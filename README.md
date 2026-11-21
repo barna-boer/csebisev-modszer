@@ -8,11 +8,12 @@ A projekt célja: ponthalmazra kört illeszteni Csebisev elve szerint (két konc
 
 | Fájl | Tartalom |
 |---|---|
-| `ponthalmaz_generator.py` | a ponthalmaz generálása (tkinter nélkül) |
-| `gui.py` | grafikus felület a generátorhoz, a „Vizsgálat indítása” gombbal |
-| `korillesztes.py` | a körillesztés: célfüggvény és a négy keresőmódszer (tkinter és matplotlib nélkül) |
-| `vizsgalo_gui.py` | a vizsgáló ablak: grafikon és összehasonlító táblázat |
-| `teszt_korillesztes.py` | rövid, nem grafikus ellenőrző szkript |
+| `main.py` | a program indítója: megnyitja a generátort, és összeköti a két ablakot |
+| `code_base/ponthalmaz_generator.py` | a ponthalmaz generálása (tkinter nélkül) |
+| `code_base/gui.py` | a generátor ablaka, a „Vizsgálat indítása” gombbal |
+| `code_base/korillesztes.py` | a körillesztés: célfüggvény és a négy keresőmódszer (tkinter és matplotlib nélkül) |
+| `code_base/vizsgalo_gui.py` | a vizsgáló ablak: grafikon és összehasonlító táblázat |
+| `tests/teszt_korillesztes.py` | rövid, nem grafikus ellenőrző szkript |
 
 ## Követelmények
 
@@ -29,9 +30,11 @@ python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-python3 gui.py                   # generátor -> "Vizsgálat indítása"
-python3 teszt_korillesztes.py    # ellenőrzés
+python3 main.py                        # generátor -> "Vizsgálat indítása"
+python3 tests/teszt_korillesztes.py    # ellenőrzés
 ```
+
+A parancsokat a projekt gyökeréből kell kiadni (ott van a `main.py`).
 
 ## A generálás (gui.py)
 
@@ -44,7 +47,7 @@ python3 teszt_korillesztes.py    # ellenőrzés
 
 Bármelyik mező módosításakor a ponthalmaz automatikusan újragenerálódik ugyanazzal a seeddel; az „Új véletlen halmaz” gomb új seedet sorsol. Minden hiba csak a pont sugárirányú távolságát változtatja, a szögét nem, így a pontok mindig a megadott íven belül maradnak.
 
-A **„Vizsgálat indítása”** gomb bezárja (elrejti) a generátorablakot, és megnyitja a vizsgáló ablakot, átadva neki a ponthalmazt és a generálás adatait.
+A **„Vizsgálat indítása”** gomb bezárja (elrejti) a generátorablakot, és megnyitja a vizsgáló ablakot, átadva neki a ponthalmazt és a generálás adatait. A vizsgáló ablak **„← Vissza a generátorhoz”** gombja bezárja a vizsgáló ablakot, és újra megjeleníti a generátort a beállított mezőkkel és ponthalmazzal, így módosítás után új vizsgálat indítható. A két ablakot a `main.py` köti össze; a vizsgáló ablak bezárásakor (X) a program kilép.
 
 ## A körillesztés (korillesztes.py)
 
@@ -65,14 +68,17 @@ Mivel egy iteráció módszerenként más munka, a táblázat a célfüggvény-k
 
 - Megnyitáskor a négy módszer egyszer automatikusan lefut (max_iter = 200, seed = 1).
 - **Iterációk száma** mező és **Futtatás** gomb: ugyanarra a ponthalmazra más iterációszámmal újra lefuttathatók.
-- **Grafikon:** a ponthalmaz (a kiugró pontok pirossal), a kiválasztott módszer két koncentrikus köre (r és R sugárral) és az illesztett kör ((r + R) / 2 sugárral, ugyanazzal a középponttal).
-- **Táblázat:** Módszer, Szélesség (R − r), r, R, Középpont a, Középpont b, Futásidő (s), Célfüggvény-kiértékelések száma. A legkisebb szélességű sor ki van emelve; egy sorra kattintva annak a módszernek az eredménye látszik a grafikonon.
+- **Grafikon:** a ponthalmaz (a kiugró pontok pirossal), a névleges (várt) kör és középpont szürkével, a kiválasztott módszer két koncentrikus köre (r és R sugárral) és az illesztett kör ((r + R) / 2 sugárral, ugyanazzal a középponttal).
+- **Táblázat:** Módszer, Szélesség (R − r), r, R, Sugár (r + R) / 2, Középpont a, Középpont b, Eltérés a névleges középponttól, Futásidő (s), Célfüggvény-kiértékelések száma. A legkisebb szélességű módszer sora ki van emelve; egy sorra kattintva annak az eredménye látszik a grafikonon.
+- **Névleges (várt) sor** (a táblázat első, szürke sora): a generálás középpontja és sugara. A szélesség, r és R ennél a sornál a névleges középpontból mérve értendő, vagyis ekkora gyűrűt okoznak a generált hibák (pl. 0,9-es ellipszisnél kb. a két féltengely különbsége, ±e zajnál kb. 2e). Egy jó módszer ennél nem ad nagyobb szélességet. A kiugró pontok viszont a Csebisev-illesztést elhúzhatják a névleges középponttól.
 
 ## Használat a kódból
 
+A projekt gyökeréből futtatva:
+
 ```python
-from ponthalmaz_generator import generate_points
-import korillesztes as kor
+from code_base.ponthalmaz_generator import generate_points
+from code_base import korillesztes as kor
 
 pontok, ground_truth = generate_points(
     n=200, radius=100, arc=(30, 200),

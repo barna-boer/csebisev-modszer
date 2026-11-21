@@ -16,14 +16,12 @@ Bármelyik mező módosításakor a ponthalmaz automatikusan újragenerálódik
 ugyanazzal a seeddel, így csak a módosított paraméter hatása látszik.
 Az "Új véletlen halmaz" gomb új seedet sorsol.
 
-A "Vizsgálat indítása" gomb a generátorablakot elrejti, és megnyitja a
-vizsgáló felületet (vizsgalo_gui.py) az aktuális ponthalmazzal.
+A "Vizsgálat indítása" gomb az aktuális ponthalmazt átadja a main.py-nak,
+amely megnyitja vele a vizsgáló felületet (vizsgalo_gui.py).
 
 A pontokat a ponthalmaz_generator.py generate_points függvénye állítja elő.
 
-Futtatás:  python3 gui.py
-Függőségek: numpy, matplotlib (a vizsgáló felülethez)
-Telepítés:  pip install -r requirements.txt
+Futtatás (a projekt gyökeréből):  python3 main.py
 """
 
 import math
@@ -33,13 +31,13 @@ from tkinter import ttk
 
 import numpy as np
 
-from ponthalmaz_generator import (ANGLE_MODES, SHAPE_DEFAULTS, SHAPE_TYPES,
-                                  generate_points)
+from code_base.ponthalmaz_generator import (ANGLE_MODES, SHAPE_DEFAULTS,
+                                            SHAPE_TYPES, generate_points)
 
 
-# ---------------------------------------------------------------------------
-# A grafikus felület
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 1. Beállítások (a rajz és a mezők állandói)
+# ===========================================================================
 CANVAS_SIZE = 640          # a rajzterület kezdeti mérete képpontban
 VIEW_MARGIN = 15           # üres sáv a rajz széle körül (képpontban)
 POINT_RADIUS = 3           # egy pont kirajzolt mérete (képpontban, nem skálázódik)
@@ -57,12 +55,17 @@ AUTO_DELAY_MS = 150        # módosítás után ennyi idővel generál újra (g�
                            # közben ne minden egyes leütésre)
 
 
+# ===========================================================================
+# 2. Segédfüggvények (seed sorsolása, mezők beolvasása)
+# ===========================================================================
 def _new_seed():
     """Új véletlen seed az "Új véletlen halmaz" gombhoz."""
     return random.randrange(2**31 - 1)
 
 
 def _parse_float(text, name):
+    """Egy mező szövegét valós számmá alakítja (tizedesvesszőt is elfogad).
+    Hibás szövegnél ValueError, a hibaüzenetben a mező nevével (name)."""
     try:
         return float(text.strip().replace(",", "."))
     except ValueError:
@@ -70,15 +73,30 @@ def _parse_float(text, name):
 
 
 def _parse_int(text, name):
+    """Egy mező szövegét egész számmá alakítja.
+    Hibás szövegnél ValueError, a hibaüzenetben a mező nevével (name)."""
     try:
         return int(text.strip())
     except ValueError:
         raise ValueError(f"{name}: egész szám kell.")
 
 
+# ===========================================================================
+# 3. A generátor ablaka
+# ===========================================================================
 class App:
-    def __init__(self, root):
+    """A ponthalmaz-generátor ablaka.
+
+    Bal oldalon a generálás paraméterei (mezők, választók, gombok), jobb
+    oldalon a generált ponthalmaz rajza. Bármelyik mező módosításakor a
+    ponthalmaz automatikusan újragenerálódik."""
+
+    def __init__(self, root, on_analyze):
+        """root: a Tk gyökérablak.
+        on_analyze(points, ground_truth): a "Vizsgálat indítása" gombra
+        hívódik a jelenlegi ponthalmazzal (lásd main.py)."""
         self.root = root
+        self.on_analyze = on_analyze
         root.title("Ponthalmaz-generátor")
 
         self.points = None        # a legutóbb generált pontok
@@ -86,6 +104,7 @@ class App:
         self._redraw_job = None   # átméretezéskor késleltetett újrarajzolás
         self._generate_job = None # módosításkor késleltetett újragenerálás
 
+        # --- az ablak elrendezése ---
         # az ablak átméretezésekor a rajzterület (1. oszlop) nőjön/zsugorodjon
         root.columnconfigure(1, weight=1)
         root.rowconfigure(0, weight=1)
@@ -188,6 +207,7 @@ class App:
         self.canvas.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
         self.canvas.bind("<Configure>", self._on_resize)
 
+        # --- első generálás és automatikus újragenerálás ---
         self.generate()  # induláskor rögtön rajzoljon valamit
 
         # bármelyik mező módosításakor automatikusan újragenerál
@@ -199,6 +219,7 @@ class App:
         for var in variables:
             var.trace_add("write", self._schedule_generate)
 
+        # --- legkisebb ablakméret ---
         # ne lehessen használhatatlanul kicsire húzni az ablakot
         root.update_idletasks()
         root.minsize(panel.winfo_reqwidth() + 200, panel.winfo_reqheight() + 20)
@@ -206,13 +227,17 @@ class App:
     # --- a vezérlőpanel elemei ---
     @staticmethod
     def _add_group(parent, row, title):
-        box = ttk.LabelFrame(parent, text=title, padding=(8, 2))
+        """Egy címmel ellátott keretet (mezőcsoportot) tesz a panel adott
+        sorába, és visszaadja, hogy a mezőket bele lehessen tenni."""
+        box =ttk.LabelFrame(parent, text=title, padding=(8, 2))
         box.grid(row=row, column=0, sticky="ew", pady=(0, 4))
         box.columnconfigure(1, weight=1)
         return box
 
     @staticmethod
     def _add_field(parent, row, label, variable):
+        """Egy felirat + beviteli mező párt tesz a keret adott sorába; a mező
+        tartalma a variable változóban van. Visszaadja a beviteli mezőt."""
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w",
                                            pady=1)
         entry = ttk.Entry(parent, textvariable=variable, width=10)
@@ -236,11 +261,15 @@ class App:
 
     @staticmethod
     def _combo_key(variable, choices):
-        label = variable.get()
+        """A legördülő listában kiválasztott magyar felirathoz tartozó belső
+        kulcsot adja vissza (pl. "Ellipszis" -> "ellipse")."""
+        label =variable.get()
         return next(key for key, text in choices.items() if text == label)
 
     def _update_arc_state(self):
-        state = "disabled" if self.var_full.get() else "normal"
+        """Teljes kör esetén letiltja az ív kezdő- és végszögének mezőit,
+        ívdarab esetén engedélyezi őket."""
+        state ="disabled" if self.var_full.get() else "normal"
         for entry in self.arc_entries:
             entry.configure(state=state)
 
@@ -269,6 +298,7 @@ class App:
         self._redraw_job = self.root.after(30, self._redraw)
 
     def _redraw(self):
+        """Átméretezés után (késleltetve) újrarajzolja a ponthalmazt."""
         self._redraw_job = None
         if self.points is not None:
             self.draw()
@@ -281,7 +311,7 @@ class App:
         újrarajzolásukat (ugyanúgy, mint az egér fölévitele)."""
         for child in widget.winfo_children():
             if isinstance(child, ttk.Widget):
-                child.configure(cursor=child.cget("cursor"))
+                child["cursor"] = child["cursor"]
             self._refresh_widgets(child)
 
     # --- bemenet beolvasása (a tartalmi ellenőrzést a generátor végzi) ---
@@ -318,6 +348,10 @@ class App:
 
     # --- generálás, a vizsgálat indítása ---
     def generate(self):
+        """Beolvassa a mezőket, és legenerálja velük a ponthalmazt.
+
+        Hibás mező esetén piros hibaüzenetet ír ki, és a régi ponthalmaz
+        marad meg; siker esetén frissíti az összefoglalót és a rajzot."""
         self._generate_job = None
         try:
             kwargs = self._read_inputs()
@@ -331,13 +365,9 @@ class App:
         self.draw()
 
     def start_analysis(self):
-        """A generátor ablakát elrejti, és megnyitja a vizsgáló felületet a
-        jelenlegi ponthalmazzal.
-
-        Egyetlen Tk gyökér van: a vizsgáló egy Toplevel ablak ugyanebben a
-        gyökérben, a (rejtett) generátorablak pedig a gyökér maga. A vizsgáló
-        bezárásakor a gyökeret is megszüntetjük, így a program kilép, és nem
-        marad árva ablak."""
+        """A "Vizsgálat indítása" gomb: a jelenlegi ponthalmazt átadja az
+        on_analyze függvénynek (azt a main.py adja meg: az nyitja meg a
+        vizsgáló ablakot)."""
         # ha egy módosítás utáni újragenerálás még várakozik, most lefuttatjuk,
         # hogy a vizsgáló pontosan a mezőknek megfelelő ponthalmazt kapja
         if self._generate_job is not None:
@@ -348,20 +378,10 @@ class App:
         if self.points is None:
             self.var_error.set("Még nincs ponthalmaz: előbb generálj egyet.")
             return
-        try:
-            import vizsgalo_gui         # csak itt töltjük be (matplotlib)
-        except ImportError as e:
-            self.var_error.set(f"A vizsgáló felület nem indítható ({e}). "
-                               "Telepítés: pip install -r requirements.txt")
-            return
         if self._redraw_job is not None:
             self.root.after_cancel(self._redraw_job)
             self._redraw_job = None
-
-        self.root.withdraw()
-        window = tk.Toplevel(self.root)
-        vizsgalo_gui.VizsgaloApp(window, self.points.copy(), self.ground_truth,
-                                 on_close=self.root.destroy)
+        self.on_analyze(self.points.copy(), self.ground_truth)
 
     @staticmethod
     def _describe(gt, n_points):
@@ -373,10 +393,9 @@ class App:
             coverage = (f"ív {cov['start_deg']:g}° → {cov['end_deg']:g}° "
                         f"({cov['span_deg']:g}°)")
         shape = gt["shape_error"]
-        shape_text = SHAPE_TYPES.get(shape["type"], shape["type"])
-        if shape["params"]:
-            shape_text += " (" + ", ".join(
-                f"{k} = {v:g}" for k, v in shape["params"].items()) + ")"
+        shape_name = SHAPE_TYPES.get(shape["type"], shape["type"])
+        params = ", ".join(f"{k} = {v:g}" for k, v in shape["params"].items())
+        shape_text = f"{shape_name} ({params})" if params else f"{shape_name}"
         level = gt["random_error"]["level"]
         noise_text = f"±{level:g}" if level > 0 else "nincs"
         out = gt["outliers"]
@@ -395,10 +414,15 @@ class App:
 
     # --- rajzolás ---
     def draw(self):
+        """Kirajzolja a ponthalmazt a vászonra: a névleges kört (szaggatott),
+        ív esetén a határoló sugarakat, a pontokat és pirossal a kiugró
+        pontokat. A méretarány a vászon aktuális méretéhez igazodik."""
         c = self.canvas
         c.delete("all")
         gt = self.ground_truth
         points = self.points
+        if gt is None or points is None:   # még nincs generált ponthalmaz
+            return
 
         w, h = c.winfo_width(), c.winfo_height()
         if w <= 1 or h <= 1:          # még nincs megjelenítve az ablak
@@ -437,9 +461,3 @@ class App:
                           px + POINT_RADIUS, py + POINT_RADIUS,
                           fill=OUTLIER_COLOR if i in outliers else POINT_COLOR,
                           outline="")
-
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    App(root)
-    root.mainloop()

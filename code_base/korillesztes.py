@@ -44,13 +44,18 @@ class Objective:
     CHUNK = 2_000_000
 
     def __init__(self, points):
-        self.points = np.asarray(points, dtype=float)
+        """points: a ponthalmaz, (n, 2) alakú tömb. A kiértékelések
+        számlálója nulláról indul."""
+        self.points =np.asarray(points, dtype=float)
         if self.points.ndim != 2 or self.points.shape[1] != 2 or len(self.points) == 0:
             raise ValueError("A pontok (n, 2) alakú, nem üres tömbben legyenek.")
         self.evaluations = 0
 
     def __call__(self, centers):
-        centers = np.asarray(centers, dtype=float)
+        """A gyűrű szélessége (R - r) egy (a, b) középpontra, vagy egy
+        (m, 2) alakú tömb minden középpontjára egyszerre. Minden
+        középpont egy kiértékelésnek számít."""
+        centers =np.asarray(centers, dtype=float)
         single = centers.ndim == 1
         centers = np.atleast_2d(centers)
         self.evaluations += len(centers)
@@ -104,7 +109,7 @@ def _finish(method, points, best_x, objective, history, history_evals, t0,
 
 
 # ===========================================================================
-# A keresési tartomány
+# 2. A keresési tartomány és a módszerek közös előkészítése
 # ===========================================================================
 def default_bounds(points, scale=2.0):
     """A keresési tartomány: a ponthalmaz befoglaló téglalapjának közepe
@@ -144,19 +149,22 @@ def _prepare(points, bounds, seed):
 
 
 def _check_iter(max_iter):
+    """Ellenőrzi, hogy az iterációk száma legalább 1 értékű egész szám."""
     if isinstance(max_iter, bool) or not isinstance(max_iter, (int, np.integer)) or max_iter < 1:
         raise ValueError("Az iterációk száma legalább 1 legyen (egész szám).")
     return int(max_iter)
 
 
 # ===========================================================================
-# 2. Keresőmódszerek
+# 3. Keresőmódszerek
 #
 # Mindegyik felülete: f(points, max_iter, seed, bounds=None) -> FitResult
 # Az "iteráció" módszerenként mást jelent (lásd az egyes függvényeknél),
 # ezért az eredményben a célfüggvény-kiértékelések számát is jelentjük:
 # a módszerek igazságos összehasonlításához ez a jobb mérőszám.
 # ===========================================================================
+
+# --- 3.1 Hegymászó véletlen újraindítással ---
 def hill_climbing(points, max_iter=200, seed=None, bounds=None,
                   step0=0.1, min_step=1e-10):
     """Hegymászó keresés véletlen újraindítással.
@@ -169,6 +177,7 @@ def hill_climbing(points, max_iter=200, seed=None, bounds=None,
     `min_step * tartományméret` alá csökken, egy lokális minimumba
     jutottunk: újraindulunk egy véletlen pontból (+1 kiértékelés).
     """
+    
     max_iter = _check_iter(max_iter)
     t0 = time.perf_counter()
     points, objective, lo, hi, size, rng = _prepare(points, bounds, seed)
@@ -210,6 +219,7 @@ def hill_climbing(points, max_iter=200, seed=None, bounds=None,
                    history, history_evals, t0, seed, {"restarts": restarts})
 
 
+# --- 3.2 Szimulált hűtés ---
 def simulated_annealing(points, max_iter=2000, seed=None, bounds=None,
                         sigma0=0.1, sigma_end=1e-9, temp_end_ratio=1e-6):
     """Szimulált hűtés.
@@ -261,6 +271,7 @@ def simulated_annealing(points, max_iter=2000, seed=None, bounds=None,
                    history_evals, t0, seed, {"accepted": accepted})
 
 
+# --- 3.3 Genetikus algoritmus (valós kódolás) ---
 def genetic_algorithm(points, max_iter=200, seed=None, bounds=None,
                       pop_size=40, elite=2, tournament=3, crossover_rate=0.9,
                       mutation_rate=0.3, alpha=0.5):
@@ -322,6 +333,7 @@ def genetic_algorithm(points, max_iter=200, seed=None, bounds=None,
                    history, history_evals, t0, seed)
 
 
+# --- 3.4 Részecskeraj-optimalizálás (PSO) ---
 def particle_swarm(points, max_iter=200, seed=None, bounds=None,
                    swarm_size=30, w_start=0.9, w_end=0.4, c1=1.5, c2=1.5,
                    v_max=0.2):
@@ -365,13 +377,14 @@ def particle_swarm(points, max_iter=200, seed=None, bounds=None,
                    history_evals, t0, seed)
 
 
-# a keresőmódszerek listája (ebben a sorrendben futnak és jelennek meg)
+# --- 3.5 A módszerek listája ---
+# ebben a sorrendben futnak és jelennek meg a táblázatban
 SEARCH_METHODS = [hill_climbing, simulated_annealing, genetic_algorithm,
                   particle_swarm]
 
 
 # ===========================================================================
-# 3. Mind a négy módszer egy ponthalmazon
+# 4. Mind a négy módszer egy ponthalmazon
 # ===========================================================================
 def fit_all(points, max_iter, seed=1, bounds=None):
     """A négy keresőmódszer lefuttatása ugyanarra a ponthalmazra, ugyanazzal

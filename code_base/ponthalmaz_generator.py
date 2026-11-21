@@ -30,6 +30,9 @@ import numbers
 import numpy as np
 
 
+# ===========================================================================
+# 1. A választható típusok és az alapértékek
+# ===========================================================================
 # a választható típusok (a szótárak értéke a magyar megnevezés)
 SHAPE_TYPES = {
     "none": "nincs (tökéletes kör)",
@@ -51,19 +54,23 @@ SHAPE_DEFAULTS = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Segédfüggvények a paraméterek ellenőrzéséhez
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 2. Segédfüggvények a paraméterek ellenőrzéséhez
+# ===========================================================================
 def _is_number(value):
+    """Igaz, ha value véges valós szám (a bool nem számít számnak)."""
     return (isinstance(value, numbers.Real) and not isinstance(value, bool)
             and math.isfinite(value))
 
 
 def _is_int(value):
+    """Igaz, ha value egész szám (a bool nem számít egésznek)."""
     return isinstance(value, numbers.Integral) and not isinstance(value, bool)
 
 
 def _check_number(value, name):
+    """Ellenőrzi, hogy value véges szám, és float-ként adja vissza;
+    különben ValueError a paraméter nevével (name)."""
     if not _is_number(value):
         raise ValueError(f"{name}: véges szám kell (kapott érték: {value!r}).")
     return float(value)
@@ -75,9 +82,9 @@ def _arc_span(start, end):
     return (end - start) % 360.0
 
 
-# ---------------------------------------------------------------------------
-# A szögek és a sugarak előállítása
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 3. A szögek és a sugarak előállítása
+# ===========================================================================
 def _make_offsets(rng, count, offset_start, length, mode, full_circle):
     """count darab szögeltolást (fokban) ad az [offset_start, offset_start +
     length] tartományban, egyenletes közzel vagy véletlenszerűen."""
@@ -138,9 +145,9 @@ def _check_shape_params(shape, shape_params):
     return params
 
 
-# ---------------------------------------------------------------------------
-# A generáló függvény
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 4. A generáló függvény
+# ===========================================================================
 def generate_points(n, radius=100.0, center=(0.0, 0.0), *,
                     arc=None, angle_mode="random",
                     shape="none", shape_params=None,

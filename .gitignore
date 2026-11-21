@@ -14,5 +14,6 @@ dist/
 
 # IDE / OS
 .vscode/
+.claude/settings.local.json
 .idea/
 .DS_Store
