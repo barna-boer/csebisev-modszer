@@ -17,8 +17,8 @@ Minden hiba csak a pont sugárirányú távolságát változtatja, a szögét ne
 így a pontok mindig a megadott íven belül maradnak.
 
 Ez a modul csak a generálást tartalmazza, grafikus kód nélkül, így a
-keresőmódszerek is közvetlenül importálhatják. A CSV-mentés és -betöltés
-a csv_kezeles.py-ban, a grafikus felület a gui.py-ban van.
+keresőmódszerek is közvetlenül importálhatják. A grafikus felület a
+gui.py-ban van.
 
 Csak a NumPy-t (és a Python alap könyvtárát) használja.
 Telepítés, ha kell:  pip install numpy

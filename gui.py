@@ -16,25 +16,23 @@ Bármelyik mező módosításakor a ponthalmaz automatikusan újragenerálódik
 ugyanazzal a seeddel, így csak a módosított paraméter hatása látszik.
 Az "Új véletlen halmaz" gomb új seedet sorsol.
 
-A generált ponthalmaz CSV-be menthető és onnan visszatölthető, így a
-keresőmódszerek pontosan ugyanazt a ponthalmazt kaphatják.
+A "Vizsgálat indítása" gomb a generátorablakot elrejti, és megnyitja a
+vizsgáló felületet (vizsgalo_gui.py) az aktuális ponthalmazzal.
 
 A pontokat a ponthalmaz_generator.py generate_points függvénye állítja elő.
 
-Futtatás:  python gui.py
-Csak a Python alap könyvtárát (tkinter) és a NumPy-t használja.
-Telepítés, ha kell:  pip install numpy
+Futtatás:  python3 gui.py
+Függőségek: numpy, matplotlib (a vizsgáló felülethez)
+Telepítés:  pip install -r requirements.txt
 """
 
 import math
-import os
 import random
 import tkinter as tk
-from tkinter import filedialog, ttk
+from tkinter import ttk
 
 import numpy as np
 
-from csv_kezeles import load_csv, save_csv
 from ponthalmaz_generator import (ANGLE_MODES, SHAPE_DEFAULTS, SHAPE_TYPES,
                                   generate_points)
 
@@ -83,8 +81,8 @@ class App:
         self.root = root
         root.title("Ponthalmaz-generátor")
 
-        self.points = None        # a legutóbb generált / betöltött pontok
-        self.ground_truth = None  # a hozzájuk tartozó adatok (vagy None)
+        self.points = None        # a legutóbb generált pontok
+        self.ground_truth = None  # a hozzájuk tartozó generálási adatok
         self._redraw_job = None   # átméretezéskor késleltetett újrarajzolás
         self._generate_job = None # módosításkor késleltetett újragenerálás
 
@@ -165,14 +163,13 @@ class App:
         # gombok (egy sorban)
         buttons = ttk.Frame(panel)
         buttons.grid(row=5, column=0, pady=(6, 2), sticky="ew")
-        buttons.columnconfigure((0, 1, 2), weight=1)
+        buttons.columnconfigure((0, 1), weight=1)
         ttk.Button(buttons, text="Új véletlen halmaz",
                    command=lambda: self.var_seed.set(str(_new_seed()))).grid(
             row=0, column=0, padx=(0, 2), sticky="ew")
-        ttk.Button(buttons, text="Mentés (CSV)…", command=self.save).grid(
-            row=0, column=1, padx=2, sticky="ew")
-        ttk.Button(buttons, text="Betöltés (CSV)…", command=self.load).grid(
-            row=0, column=2, padx=(2, 0), sticky="ew")
+        ttk.Button(buttons, text="Vizsgálat indítása",
+                   command=self.start_analysis).grid(
+            row=0, column=1, padx=(2, 0), sticky="ew")
 
         # a hibaüzenet közvetlenül a gombok alatt, hogy mindig látsszon
         self.var_error = tk.StringVar(value="")
@@ -319,8 +316,9 @@ class App:
             kwargs["seed"] = _parse_int(seed_text, "A seed")
         return kwargs
 
-    # --- generálás, mentés, betöltés ---
+    # --- generálás, a vizsgálat indítása ---
     def generate(self):
+        self._generate_job = None
         try:
             kwargs = self._read_inputs()
             points, ground_truth = generate_points(**kwargs)
@@ -332,47 +330,42 @@ class App:
         self.var_info.set(self._describe(ground_truth, len(points)))
         self.draw()
 
-    def save(self):
-        if self.points is None:
-            self.var_error.set("Nincs mit menteni.")
-            return
-        path = filedialog.asksaveasfilename(
-            title="Ponthalmaz mentése", defaultextension=".csv",
-            filetypes=[("CSV fájl", "*.csv"), ("Minden fájl", "*")])
-        if not path:
-            return
-        try:
-            save_csv(path, self.points, self.ground_truth)
-        except (OSError, ValueError) as e:
-            self.var_error.set(f"A mentés nem sikerült: {e}")
-            return
-        self.var_error.set("")
-        self.var_info.set(f"Elmentve: {os.path.basename(path)}\n\n"
-                          + self._describe(self.ground_truth, len(self.points)))
+    def start_analysis(self):
+        """A generátor ablakát elrejti, és megnyitja a vizsgáló felületet a
+        jelenlegi ponthalmazzal.
 
-    def load(self):
-        path = filedialog.askopenfilename(
-            title="Ponthalmaz betöltése",
-            filetypes=[("CSV fájl", "*.csv"), ("Minden fájl", "*")])
-        if not path:
+        Egyetlen Tk gyökér van: a vizsgáló egy Toplevel ablak ugyanebben a
+        gyökérben, a (rejtett) generátorablak pedig a gyökér maga. A vizsgáló
+        bezárásakor a gyökeret is megszüntetjük, így a program kilép, és nem
+        marad árva ablak."""
+        # ha egy módosítás utáni újragenerálás még várakozik, most lefuttatjuk,
+        # hogy a vizsgáló pontosan a mezőknek megfelelő ponthalmazt kapja
+        if self._generate_job is not None:
+            self.root.after_cancel(self._generate_job)
+            self.generate()
+        if self.var_error.get():
+            return                      # hibás mező: a hibaüzenet már látszik
+        if self.points is None:
+            self.var_error.set("Még nincs ponthalmaz: előbb generálj egyet.")
             return
         try:
-            points, ground_truth = load_csv(path)
-        except (OSError, ValueError, UnicodeDecodeError) as e:
-            self.var_error.set(f"A betöltés nem sikerült: {e}")
+            import vizsgalo_gui         # csak itt töltjük be (matplotlib)
+        except ImportError as e:
+            self.var_error.set(f"A vizsgáló felület nem indítható ({e}). "
+                               "Telepítés: pip install -r requirements.txt")
             return
-        self.var_error.set("")
-        self.points, self.ground_truth = points, ground_truth
-        self.var_info.set(f"Betöltve: {os.path.basename(path)}\n\n"
-                          + self._describe(ground_truth, len(points)))
-        self.draw()
+        if self._redraw_job is not None:
+            self.root.after_cancel(self._redraw_job)
+            self._redraw_job = None
+
+        self.root.withdraw()
+        window = tk.Toplevel(self.root)
+        vizsgalo_gui.VizsgaloApp(window, self.points.copy(), self.ground_truth,
+                                 on_close=self.root.destroy)
 
     @staticmethod
     def _describe(gt, n_points):
         """Rövid szöveges összefoglaló a ponthalmazról."""
-        if gt is None:
-            return (f"{n_points} pont.\n"
-                    "(A fájlban nincs adat a névleges körről.)")
         cov = gt["coverage"]
         if cov["full_circle"]:
             coverage = "teljes kör"
@@ -411,42 +404,31 @@ class App:
         if w <= 1 or h <= 1:          # még nincs megjelenítve az ablak
             w = h = CANVAS_SIZE
 
-        # a nézet közepe a névleges kör középpontja (ha nincs adat, a pontok
-        # befoglaló téglalapjának közepe); a skálát úgy választjuk, hogy a
-        # névleges kör és minden pont beférjen. A tárolt koordináták nem
-        # változnak, csak a megjelenítés skálázódik.
-        if gt is not None:
-            center = np.asarray(gt["center"], dtype=float)
-            radius = gt["radius"]
-        else:
-            center = (points.min(axis=0) + points.max(axis=0)) / 2.0
-            radius = None
-        extent = float(np.max(np.hypot(*(points - center).T)))
-        if radius is not None:
-            extent = max(extent, radius)
-        extent = max(extent, 1e-9)
+        # a nézet közepe a névleges kör középpontja; a skálát úgy választjuk,
+        # hogy a névleges kör és minden pont beférjen. A tárolt koordináták
+        # nem változnak, csak a megjelenítés skálázódik.
+        center = np.asarray(gt["center"], dtype=float)
+        radius = gt["radius"]
+        extent = max(float(np.max(np.hypot(*(points - center).T))), radius, 1e-9)
         scale = (min(w, h) / 2.0 - VIEW_MARGIN) / extent
         cx, cy = w / 2.0, h / 2.0
 
         # a névleges kör (szaggatott) és az ív határai (pontozott sugarak)
-        if radius is not None:
-            rs = radius * scale
-            c.create_oval(cx - rs, cy - rs, cx + rs, cy + rs,
-                          outline=GUIDE_COLOR, dash=(4, 4))
-            cov = gt["coverage"]
-            if not cov["full_circle"]:
-                for deg in (cov["start_deg"], cov["end_deg"]):
-                    a = math.radians(deg)
-                    c.create_line(cx, cy, cx + extent * scale * math.cos(a),
-                                  cy - extent * scale * math.sin(a),
-                                  fill=GUIDE_COLOR, dash=(1, 3))
+        rs = radius * scale
+        c.create_oval(cx - rs, cy - rs, cx + rs, cy + rs,
+                      outline=GUIDE_COLOR, dash=(4, 4))
+        cov = gt["coverage"]
+        if not cov["full_circle"]:
+            for deg in (cov["start_deg"], cov["end_deg"]):
+                a = math.radians(deg)
+                c.create_line(cx, cy, cx + extent * scale * math.cos(a),
+                              cy - extent * scale * math.sin(a),
+                              fill=GUIDE_COLOR, dash=(1, 3))
         # a kijelző közepe (= a névleges középpont)
         c.create_line(cx - 6, cy, cx + 6, cy, fill=GUIDE_COLOR)
         c.create_line(cx, cy - 6, cx, cy + 6, fill=GUIDE_COLOR)
 
-        outliers = set()
-        if gt is not None and gt.get("n") == len(points):
-            outliers = set(gt["outliers"]["indices"])
+        outliers = set(gt["outliers"]["indices"])
 
         # a pontok (a y tengelyt megfordítjuk, mert a képernyőn lefelé nő)
         for i, (x, y) in enumerate(points - center):
