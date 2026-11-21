@@ -82,8 +82,19 @@ def fmt(value):
 # ===========================================================================
 class VizsgaloApp:
     """A vizsgáló ablak: iterációszám-mező és Futtatás gomb, grafikon és
-    összehasonlító táblázat a négy keresőmódszer eredményével."""
+    összehasonlító táblázat a négy keresőmódszer eredményével.
 
+    Az osztály részei:
+      3.1 az ablak felépítése
+      3.2 a négy módszer futtatása
+      3.3 az összehasonlító táblázat
+      3.4 a grafikon
+      3.5 vissza a generátorhoz, bezárás
+      3.6 átméretezés"""
+
+    # -----------------------------------------------------------------------
+    # 3.1 Az ablak felépítése
+    # -----------------------------------------------------------------------
     def __init__(self, window, points, ground_truth, on_close, on_back):
         """window: az ablak, amelybe a felület kerül.
         points: a generátortól átvett ponthalmaz ((n, 2) alakú tömb).
@@ -181,7 +192,9 @@ class VizsgaloApp:
         window.bind("<Configure>", self.on_window_resize)
         self.run()          # megnyitáskor egyszer automatikusan lefut
 
-    # --- futtatás ---
+    # -----------------------------------------------------------------------
+    # 3.2 A négy módszer futtatása
+    # -----------------------------------------------------------------------
     def run(self):
         """Beolvassa az iterációk számát, lefuttatja vele a négy módszert
         (seed = SEED), és frissíti a táblázatot meg a grafikont.
@@ -219,7 +232,9 @@ class VizsgaloApp:
         else:
             self.status_label.configure(foreground="")
 
-    # --- táblázat ---
+    # -----------------------------------------------------------------------
+    # 3.3 Az összehasonlító táblázat
+    # -----------------------------------------------------------------------
     def fill_table(self):
         """Újratölti a táblázatot: legfelül a névleges (várt) sor, alatta a
         négy módszer. A legkisebb szélességű módszer sorát kiemeli és
@@ -265,7 +280,9 @@ class VizsgaloApp:
         """Egy sorra kattintva újrarajzolja a grafikont."""
         self.draw()
 
-    # --- rajzolás ---
+    # -----------------------------------------------------------------------
+    # 3.4 A grafikon
+    # -----------------------------------------------------------------------
     def draw(self):
         """Kirajzolja a grafikont: a ponthalmazt (kiugró pontok pirossal), a
         névleges kört (szürke, pontozott) és a táblázatban kiválasztott sor
@@ -277,7 +294,7 @@ class VizsgaloApp:
         ax.set_aspect("equal", adjustable="box")    # a kör körnek látsszon
         ax.grid(True, alpha=0.3)
 
-        # a pontok két csoportban: normál pontok és kiugró pontok
+        # --- 1) a pontok két csoportban: normál pontok és kiugró pontok ---
         outlier_indices = self.ground_truth["outliers"]["indices"]
         normal_x = []
         normal_y = []
@@ -298,7 +315,7 @@ class VizsgaloApp:
             ax.scatter(outlier_x, outlier_y, s=14, color="#d03a1f",
                        label="kiugró pontok", zorder=3)
 
-        # a névleges (várt) kör és középpontja mindig látszik
+        # --- 2) a névleges (várt) kör és középpontja (mindig látszik) ---
         nominal_circle = Circle((self.nominal_a, self.nominal_b),
                                 self.nominal_radius, fill=False, lw=1.5, ls=":",
                                 color=NOMINAL_COLOR, label="névleges (várt) kör")
@@ -314,7 +331,7 @@ class VizsgaloApp:
         y_values.append(self.nominal_b - self.nominal_radius)
         y_values.append(self.nominal_b + self.nominal_radius)
 
-        # a kiválasztott sor adatai
+        # --- 3) a táblázatban kiválasztott sor körei ---
         title = ""
         selection = self.tree.selection()
         if len(selection) > 0:
@@ -358,6 +375,7 @@ class VizsgaloApp:
                 title += f"   (névleges: {fmt(self.nominal_width)})"
         ax.set_title(title, fontsize=10)
 
+        # --- 4) a tengelyek határai és a jelmagyarázat ---
         # a két tengelyen azonos terjedelem, hogy a pontok és a körök is
         # beférjenek, és a kör körnek látsszon
         x_min = min(x_values)
@@ -375,7 +393,27 @@ class VizsgaloApp:
                   frameon=False)
         self.canvas.draw_idle()
 
-    # --- ablakkezelés ---
+    # -----------------------------------------------------------------------
+    # 3.5 Vissza a generátorhoz, bezárás
+    # -----------------------------------------------------------------------
+    def back(self):
+        """A "Vissza a generátorhoz" gomb: leállítja a várakozó időzítést, és
+        meghívja az on_back függvényt (a main.py-ban ez bezárja ezt az
+        ablakot, és újra megjeleníti a generátort)."""
+        if self.refresh_job is not None:
+            self.window.after_cancel(self.refresh_job)
+        self.on_back()
+
+    def close(self):
+        """Az ablak bezárása (X): leállítja a várakozó időzítést, és meghívja
+        az on_close függvényt (a main.py-ban ez kilépteti a programot)."""
+        if self.refresh_job is not None:
+            self.window.after_cancel(self.refresh_job)
+        self.on_close()
+
+    # -----------------------------------------------------------------------
+    # 3.6 Átméretezés
+    # -----------------------------------------------------------------------
     def on_window_resize(self, event):
         """Az ablak átméretezésekor (kis késleltetéssel) újrarajzoltatja a
         gombokat. macOS-en ugyanis átméretezés után a gombok néha nem
@@ -398,18 +436,3 @@ class VizsgaloApp:
             if isinstance(child, ttk.Widget):
                 child["cursor"] = child["cursor"]
             self.refresh_widgets(child)
-
-    def close(self):
-        """Az ablak bezárása (X): leállítja a várakozó időzítést, és meghívja
-        az on_close függvényt (a main.py-ban ez kilépteti a programot)."""
-        if self.refresh_job is not None:
-            self.window.after_cancel(self.refresh_job)
-        self.on_close()
-
-    def back(self):
-        """A "Vissza a generátorhoz" gomb: leállítja a várakozó időzítést, és
-        meghívja az on_back függvényt (a main.py-ban ez bezárja ezt az
-        ablakot, és újra megjeleníti a generátort)."""
-        if self.refresh_job is not None:
-            self.window.after_cancel(self.refresh_job)
-        self.on_back()

@@ -90,8 +90,19 @@ class App:
 
     Bal oldalon a generálás paraméterei (mezők, választók, gombok), jobb
     oldalon a generált ponthalmaz rajza. Bármelyik mező módosításakor a
-    ponthalmaz automatikusan újragenerálódik."""
+    ponthalmaz automatikusan újragenerálódik.
 
+    Az osztály részei:
+      3.1 az ablak felépítése
+      3.2 a vezérlőpanel elemei (mezőcsoport, beviteli mező, legördülő lista)
+      3.3 események (mezők változása, gombok)
+      3.4 a ponthalmaz generálása és leírása
+      3.5 rajzolás
+      3.6 átméretezés"""
+
+    # -----------------------------------------------------------------------
+    # 3.1 Az ablak felépítése
+    # -----------------------------------------------------------------------
     def __init__(self, root, on_analyze):
         """root: a Tk ablak.
         on_analyze: függvény, amelyet a "Vizsgálat indítása" gomb hív meg a
@@ -220,7 +231,9 @@ class App:
         root.minsize(self.panel.winfo_reqwidth() + 200,
                      self.panel.winfo_reqheight() + 20)
 
-    # --- a vezérlőpanel elemei ---
+    # -----------------------------------------------------------------------
+    # 3.2 A vezérlőpanel elemei
+    # -----------------------------------------------------------------------
     def add_group(self, row, title):
         """Egy címmel ellátott keretet (mezőcsoportot) tesz a panel adott
         sorába, és visszaadja, hogy a mezőket bele lehessen tenni."""
@@ -266,7 +279,9 @@ class App:
         else:
             self.sides_entry.configure(state="disabled")
 
-    # --- események ---
+    # -----------------------------------------------------------------------
+    # 3.3 Események: mezők változása, gombok
+    # -----------------------------------------------------------------------
     def on_field_change(self, *args):
         """Bármelyik mező változásakor hívódik meg (az args-ot a tkinter
         adja, nem használjuk). Rövid késleltetéssel generál újra, hogy gépelés
@@ -282,30 +297,28 @@ class App:
         változása miatt a ponthalmaz automatikusan újragenerálódik)."""
         self.var_seed.set(str(new_seed()))
 
-    def on_resize(self, event):
-        """A rajzterület átméretezésekor újrarajzol; rövid késleltetéssel,
-        hogy húzás közben ne rajzoljon minden képpontnyi változásnál."""
+    def start_analysis(self):
+        """A "Vizsgálat indítása" gomb: a jelenlegi ponthalmazt átadja az
+        on_analyze függvénynek (azt a main.py adja meg: az nyitja meg a
+        vizsgáló ablakot)."""
+        # ha egy módosítás utáni újragenerálás még várakozik, most lefuttatjuk,
+        # hogy a vizsgáló pontosan a mezőknek megfelelő ponthalmazt kapja
+        if self.generate_job is not None:
+            self.root.after_cancel(self.generate_job)
+            self.generate()
+        if self.var_error.get() != "":
+            return                      # hibás mező: a hibaüzenet már látszik
+        if self.points is None:
+            self.var_error.set("Még nincs ponthalmaz: előbb generálj egyet.")
+            return
         if self.redraw_job is not None:
             self.root.after_cancel(self.redraw_job)
-        self.redraw_job = self.root.after(30, self.redraw)
+            self.redraw_job = None
+        self.on_analyze(self.points.copy(), self.ground_truth)
 
-    def redraw(self):
-        """Átméretezés után újrarajzolja a ponthalmazt és a gombokat."""
-        self.redraw_job = None
-        self.draw()
-        self.refresh_widgets(self.root)
-
-    def refresh_widgets(self, widget):
-        """macOS-en átméretezés után a gombok és a legördülő listák néha nem
-        rajzolódnak újra, csak ha fölé visszük az egeret. Ha egy beállítást
-        önmagára állítunk (ez semmit nem változtat), az újrarajzolja őket.
-        A függvény saját magát hívja a belső elemekre is (rekurzió)."""
-        for child in widget.winfo_children():
-            if isinstance(child, ttk.Widget):
-                child["cursor"] = child["cursor"]
-            self.refresh_widgets(child)
-
-    # --- generálás, a vizsgálat indítása ---
+    # -----------------------------------------------------------------------
+    # 3.4 A ponthalmaz generálása és leírása
+    # -----------------------------------------------------------------------
     def generate(self):
         """Beolvassa a mezőket, és legenerálja velük a ponthalmazt.
 
@@ -313,7 +326,8 @@ class App:
         marad meg; siker esetén frissíti a leírást és a rajzot."""
         self.generate_job = None
         try:
-            # a mezők beolvasása (a tartalmi ellenőrzést a generátor végzi)
+            # --- 1) a mezők beolvasása (a tartalmi ellenőrzést a generátor
+            #        végzi) ---
             n = read_int(self.var_n.get(), "A pontok száma")
             radius = read_float(self.var_radius.get(), "A névleges sugár")
 
@@ -347,7 +361,7 @@ class App:
             else:
                 seed = read_int(seed_text, "A seed")
 
-            # a generálás
+            # --- 2) a generálás ---
             points, ground_truth = generate_points(
                 n, radius, arc=arc, angle_mode=angle_mode, shape=shape,
                 shape_params=shape_params, noise_level=noise_level,
@@ -356,30 +370,12 @@ class App:
             self.var_error.set(str(error))
             return
 
+        # --- 3) az eredmény megjelenítése ---
         self.var_error.set("")
         self.points = points
         self.ground_truth = ground_truth
         self.var_info.set(self.describe(ground_truth, len(points)))
         self.draw()
-
-    def start_analysis(self):
-        """A "Vizsgálat indítása" gomb: a jelenlegi ponthalmazt átadja az
-        on_analyze függvénynek (azt a main.py adja meg: az nyitja meg a
-        vizsgáló ablakot)."""
-        # ha egy módosítás utáni újragenerálás még várakozik, most lefuttatjuk,
-        # hogy a vizsgáló pontosan a mezőknek megfelelő ponthalmazt kapja
-        if self.generate_job is not None:
-            self.root.after_cancel(self.generate_job)
-            self.generate()
-        if self.var_error.get() != "":
-            return                      # hibás mező: a hibaüzenet már látszik
-        if self.points is None:
-            self.var_error.set("Még nincs ponthalmaz: előbb generálj egyet.")
-            return
-        if self.redraw_job is not None:
-            self.root.after_cancel(self.redraw_job)
-            self.redraw_job = None
-        self.on_analyze(self.points.copy(), self.ground_truth)
 
     def describe(self, ground_truth, point_count):
         """Rövid szöveges leírás a ponthalmazról (a panel alján látszik)."""
@@ -416,7 +412,9 @@ class App:
         text += f"Seed: {ground_truth['seed']}"
         return text
 
-    # --- rajzolás ---
+    # -----------------------------------------------------------------------
+    # 3.5 Rajzolás
+    # -----------------------------------------------------------------------
     def draw(self):
         """Kirajzolja a ponthalmazt a vászonra: a névleges kört (szaggatott),
         ív esetén a határoló sugarakat, a pontokat és pirossal a kiugró
@@ -428,6 +426,7 @@ class App:
         if points is None or ground_truth is None:   # még nincs ponthalmaz
             return
 
+        # --- 1) a méretarány: mekkora legyen a rajz a vásznon ---
         width = canvas.winfo_width()
         height = canvas.winfo_height()
         if width <= 1 or height <= 1:     # az ablak még nem jelent meg
@@ -448,6 +447,7 @@ class App:
         middle_x = width / 2
         middle_y = height / 2
 
+        # --- 2) segédvonalak: névleges kör, az ív határai, a középpont ---
         # a névleges kör (szaggatott)
         r = radius * scale
         canvas.create_oval(middle_x - r, middle_y - r, middle_x + r, middle_y + r,
@@ -469,7 +469,7 @@ class App:
         canvas.create_line(middle_x, middle_y - 6, middle_x, middle_y + 6,
                            fill=GUIDE_COLOR)
 
-        # a pontok (az y-t kivonjuk, mert a képernyőn az y lefelé nő)
+        # --- 3) a pontok (az y-t kivonjuk, mert a képernyőn az y lefelé nő) ---
         outlier_indices = ground_truth["outliers"]["indices"]
         for i in range(len(points)):
             x = middle_x + (points[i][0] - center_x) * scale
@@ -481,3 +481,29 @@ class App:
             canvas.create_oval(x - POINT_RADIUS, y - POINT_RADIUS,
                                x + POINT_RADIUS, y + POINT_RADIUS,
                                fill=color, outline="")
+
+    # -----------------------------------------------------------------------
+    # 3.6 Átméretezés
+    # -----------------------------------------------------------------------
+    def on_resize(self, event):
+        """A rajzterület átméretezésekor újrarajzol; rövid késleltetéssel,
+        hogy húzás közben ne rajzoljon minden képpontnyi változásnál."""
+        if self.redraw_job is not None:
+            self.root.after_cancel(self.redraw_job)
+        self.redraw_job = self.root.after(30, self.redraw)
+
+    def redraw(self):
+        """Átméretezés után újrarajzolja a ponthalmazt és a gombokat."""
+        self.redraw_job = None
+        self.draw()
+        self.refresh_widgets(self.root)
+
+    def refresh_widgets(self, widget):
+        """macOS-en átméretezés után a gombok és a legördülő listák néha nem
+        rajzolódnak újra, csak ha fölé visszük az egeret. Ha egy beállítást
+        önmagára állítunk (ez semmit nem változtat), az újrarajzolja őket.
+        A függvény saját magát hívja a belső elemekre is (rekurzió)."""
+        for child in widget.winfo_children():
+            if isinstance(child, ttk.Widget):
+                child["cursor"] = child["cursor"]
+            self.refresh_widgets(child)

@@ -197,7 +197,10 @@ def generate_points(n, radius=100.0, center=(0.0, 0.0),
                     sugár, lefedettség, hibák és paramétereik, a kiugró
                     pontok sorszámai, seed)
     """
-    # --- paraméterek ellenőrzése ---
+    # -----------------------------------------------------------------------
+    # A) A paraméterek ellenőrzése
+    # -----------------------------------------------------------------------
+    # a pontok száma, a névleges sugár és a középpont
     if not is_whole_number(n) or n < 1:
         raise ValueError("A pontok száma legalább 1 legyen (egész szám).")
 
@@ -210,6 +213,7 @@ def generate_points(n, radius=100.0, center=(0.0, 0.0),
     center_x = check_number(center[0], "A középpont x koordinátája")
     center_y = check_number(center[1], "A középpont y koordinátája")
 
+    # a lefedettség: teljes kör vagy ívdarab
     if arc is None:
         full_circle = True
         arc_start = 0.0
@@ -227,16 +231,19 @@ def generate_points(n, radius=100.0, center=(0.0, 0.0),
                              "eltérés is ennek számít); teljes körhöz válaszd a "
                              "teljes kört.")
 
+    # a szögeloszlás és az alakhiba
     if angle_mode not in ANGLE_MODES:
         raise ValueError(f"Ismeretlen szögeloszlás: {angle_mode}.")
     if shape not in SHAPE_TYPES:
         raise ValueError(f"Ismeretlen alakhiba: {shape}.")
     params = check_shape_params(shape, shape_params)
 
+    # a véletlen hiba
     noise_level = check_number(noise_level, "A véletlen hiba mértéke")
     if noise_level < 0:
         raise ValueError("A véletlen hiba mértéke (±e) nem lehet negatív.")
 
+    # a kiugró pontok
     outlier_fraction = check_number(outlier_fraction, "A kiugró pontok aránya")
     if outlier_fraction < 0 or outlier_fraction > 1:
         raise ValueError("A kiugró pontok aránya 0 és 1 (0% és 100%) között legyen.")
@@ -246,6 +253,7 @@ def generate_points(n, radius=100.0, center=(0.0, 0.0),
     if outlier_distance <= 0:
         raise ValueError("A kiugró pontok távolsága pozitív legyen.")
 
+    # az egyenetlen pontsűrűség (sűrítés egy szögtartományba)
     cluster_fraction = check_number(cluster_fraction, "A sűrített pontok aránya")
     if cluster_fraction < 0 or cluster_fraction > 1:
         raise ValueError("A sűrített pontok aránya 0 és 1 között legyen.")
@@ -268,6 +276,7 @@ def generate_points(n, radius=100.0, center=(0.0, 0.0),
     else:
         cluster_range = None
 
+    # a seed és a véletlenszám-generátor
     if seed is None:
         # sorsolunk egy seedet, hogy a "véletlen" halmaz is visszaállítható legyen
         seed = random.randrange(2**31 - 1)
@@ -278,6 +287,9 @@ def generate_points(n, radius=100.0, center=(0.0, 0.0),
     # számokat adja, így ugyanaz a ponthalmaz jön ki
     rnd = random.Random(seed)
 
+    # -----------------------------------------------------------------------
+    # B) A pontok előállítása (a fájl elején leírt 4 lépés)
+    # -----------------------------------------------------------------------
     # --- 1. a szögek (fokban) ---
     cluster_count = round(cluster_fraction * n)   # a sűrített pontok száma
     angles = make_angles(rnd, n - cluster_count, arc_start, span, angle_mode,
@@ -314,6 +326,9 @@ def generate_points(n, radius=100.0, center=(0.0, 0.0),
         points.append([x, y])
     points = np.array(points)
 
+    # -----------------------------------------------------------------------
+    # C) A generálás adatai (ground truth)
+    # -----------------------------------------------------------------------
     # a generálás minden adata (a felület és a kiértékelés is ezt használja)
     ground_truth = {
         "n": n,

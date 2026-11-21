@@ -122,7 +122,9 @@ def prepare(points, max_iter, bounds):
 # kiértékeléseket is számoljuk: a módszerek összehasonlításához ez a jobb.
 # ===========================================================================
 
-# --- 3.1 Hegymászó algoritmus véletlen újraindítással ---
+# -------------------------------------------------------------------------
+# 3.1 Hegymászó algoritmus véletlen újraindítással
+# -------------------------------------------------------------------------
 # a 8 szomszéd iránya: fel, le, jobbra, balra és a 4 átló
 DIRECTIONS = [(1, 0), (-1, 0), (0, 1), (0, -1),
               (0.7071, 0.7071), (0.7071, -0.7071),
@@ -159,6 +161,8 @@ def hill_climbing(points, max_iter=200, seed=None, bounds=None):
     # az eddigi legjobb állapot (az újraindítások miatt kell külön tárolni)
     best_a, best_b, best_f = a, b, f
 
+    # 2) leállási feltétel: max_iter iteráció után vége a keresésnek;
+    #    addig ismételjük a 3) lépést
     for iteration in range(max_iter):
         # 3) s összes szomszédja közül a legjobb
         neighbor_a, neighbor_b, neighbor_f = a, b, math.inf
@@ -187,11 +191,14 @@ def hill_climbing(points, max_iter=200, seed=None, bounds=None):
         if f < best_f:
             best_a, best_b, best_f = a, b, f
 
+    # az eredmény: a keresés során talált legjobb állapot
     return make_result("Hegymászó (újraindítással)", points, best_a, best_b,
                        evaluations, start_time)
 
 
-# --- 3.2 Szimulált hűtés ---
+# -------------------------------------------------------------------------
+# 3.2 Szimulált hűtés
+# -------------------------------------------------------------------------
 SA_START_STEP = 0.1     # a kezdő lépésköz a tartomány méretéhez képest
 SA_END_STEP = 1e-9      # a lépésköz a futás végén (a tartományhoz képest)
 SA_END_RATIO = 1e-6     # a végső hőmérséklet a kezdőnek ekkora része
@@ -233,6 +240,8 @@ def simulated_annealing(points, max_iter=2000, seed=None, bounds=None):
     temperature = start_temperature
     cooling = SA_END_RATIO ** (1 / max_iter)
 
+    # 2) leállási feltétel: max_iter iteráció után vége a keresésnek;
+    #    addig ismételjük a 3) lépést
     for iteration in range(max_iter):
         # a lépésköz: a progress (0 -> 1) négyzete miatt eleinte lassan,
         # a végén gyorsan csökken SA_START_STEP-ről SA_END_STEP-re
@@ -261,11 +270,14 @@ def simulated_annealing(points, max_iter=2000, seed=None, bounds=None):
         # a hőmérséklet csökkentése
         temperature = temperature * cooling
 
+    # az eredmény: a keresés során talált legjobb állapot
     return make_result("Szimulált hűtés", points, best_a, best_b, evaluations,
                        start_time)
 
 
-# --- 3.3 Genetikus algoritmus ---
+# -------------------------------------------------------------------------
+# 3.3 Genetikus algoritmus
+# -------------------------------------------------------------------------
 GA_POPULATION = 40       # a populáció mérete (az előadás példájában 30-50)
 GA_CROSSOVER_RATE = 0.8  # ekkora eséllyel keresztezünk (különben másolat)
 GA_MUTATION_RATE = 0.3   # ekkora eséllyel mutálódik egy gyermek
@@ -305,6 +317,8 @@ def genetic_algorithm(points, max_iter=200, seed=None, bounds=None):
         evaluations += 1
         population.append((a, b, f))
 
+    # 2) leállási feltétel: max_iter iteráció után vége a keresésnek;
+    #    addig ismételjük a 3) lépést
     for generation in range(max_iter):
         # a mutáció mérete generációról generációra csökken
         progress = generation / max_iter
@@ -348,6 +362,7 @@ def genetic_algorithm(points, max_iter=200, seed=None, bounds=None):
 
     # a sorba rendezés miatt az első egyed a legjobb
     best_a, best_b, best_f = population[0]
+    # az eredmény: a keresés során talált legjobb állapot
     return make_result("Genetikus algoritmus", points, best_a, best_b,
                        evaluations, start_time)
 
@@ -368,7 +383,9 @@ def select_parent(population, rnd):
     return second_a, second_b, second_f
 
 
-# --- 3.4 Részecskeraj-optimalizálás (PSO) ---
+# -------------------------------------------------------------------------
+# 3.4 Részecskeraj-optimalizálás (PSO)
+# -------------------------------------------------------------------------
 PSO_SWARM = 30      # a részecskék száma
 PSO_INERTIA = 0.7   # w: mennyire tartja meg a részecske az előző sebességét
 PSO_C1 = 1.5        # c1: mennyire húz a részecske saját legjobb helye felé
@@ -426,6 +443,8 @@ def particle_swarm(points, max_iter=200, seed=None, bounds=None):
         if own_best_f[i] < swarm_best_f:
             swarm_best_a, swarm_best_b, swarm_best_f = own_best_a[i], own_best_b[i], own_best_f[i]
 
+    # 2) leállási feltétel: max_iter iteráció után vége a keresésnek;
+    #    addig ismételjük a 3) lépést
     for iteration in range(max_iter):
         for i in range(PSO_SWARM):
             # 3) az új sebesség: v = w*v + c1*r1*(p - x) + c2*r2*(g - x)
@@ -457,11 +476,14 @@ def particle_swarm(points, max_iter=200, seed=None, bounds=None):
                 if f < swarm_best_f:
                     swarm_best_a, swarm_best_b, swarm_best_f = a, b, f
 
+    # az eredmény: a keresés során talált legjobb állapot
     return make_result("Részecskeraj (PSO)", points, swarm_best_a,
                        swarm_best_b, evaluations, start_time)
 
 
-# --- 3.5 A módszerek listája ---
+# -------------------------------------------------------------------------
+# 3.5 A módszerek listája
+# -------------------------------------------------------------------------
 # ebben a sorrendben futnak és jelennek meg a táblázatban
 SEARCH_METHODS = [hill_climbing, simulated_annealing, genetic_algorithm,
                   particle_swarm]
