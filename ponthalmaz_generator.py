@@ -1,207 +1,331 @@
 """
 Ponthalmaz-generátor körillesztéshez (Csebisev-elv).
 
-A program egy egyszerű ablakban megjeleníti a generált pontokat.
-Megadható:
-  - a pontok száma,
-  - a sáv belső és külső sugara (a sáv a kijelző közepe körül van),
-  - opcionálisan egy seed (ugyanazzal a seeddel mindig ugyanaz a ponthalmaz jön ki).
+A feladat: adott egy ponthalmaz, amelyre regressziós kört kell illeszteni.
+A ponthalmaz alak-, véletlen- és egyéb hibákat is tartalmaz, és lefedhet
+egy teljes kört vagy annak csak egy ívdarabját.
 
-Futtatás:  python ponthalmaz_generator.py
-Csak a Python alap könyvtárát (tkinter) és a NumPy-t használja.
+A generálás menete:
+  1. van egy "névleges" kör (középpont + sugár R),
+  2. a pontok szögei a teljes körön vagy egy ívdarabon belül vannak
+     (egyenletes közzel vagy véletlenszerűen, opcionálisan egy szögtartományba
+     sűrítve),
+  3. minden ponthoz kiszámoljuk a sugarat: alakhiba (ellipszis vagy
+     sokszög) + véletlen hiba (zaj) + kiugró pontok eltolása.
+
+Minden hiba csak a pont sugárirányú távolságát változtatja, a szögét nem,
+így a pontok mindig a megadott íven belül maradnak.
+
+Ez a modul csak a generálást tartalmazza, grafikus kód nélkül, így a
+keresőmódszerek is közvetlenül importálhatják. A CSV-mentés és -betöltés
+a csv_kezeles.py-ban, a grafikus felület a gui.py-ban van.
+
+Csak a NumPy-t (és a Python alap könyvtárát) használja.
 Telepítés, ha kell:  pip install numpy
 """
 
-import tkinter as tk
-from tkinter import ttk
+import math
+import numbers
 
 import numpy as np
 
 
-# ---------------------------------------------------------------------------
-# 1. A generáló függvény (a GUI-tól független, később a keresőmódszerek is
-#    ezt használhatják)
-# ---------------------------------------------------------------------------
-def generate_points(n, r_inner, r_outer, center=(0.0, 0.0), seed=None):
-    """
-    n darab pontot generál a (center) középpontú körgyűrűben.
+# a választható típusok (a szótárak értéke a magyar megnevezés)
+SHAPE_TYPES = {
+    "none": "nincs (tökéletes kör)",
+    "ellipse": "ellipszis",
+    "polygon": "szabályos sokszög",
+}
+ANGLE_MODES = {
+    "random": "véletlen",
+    "uniform": "egyenletes közű",
+}
 
-    Minden pont:
-      - szöge véletlen (0 és 360 fok között, egyenletesen),
-      - középponttól mért távolsága véletlen r_inner és r_outer között.
-
-    Visszatérés: (n, 2) alakú NumPy tömb, minden sor egy (x, y) pont.
-
-    Fontos a későbbi vizsgálathoz: mivel minden pont az r_inner..r_outer
-    gyűrűben van, az optimális Csebisev-gyűrű szélessége legfeljebb
-    r_outer - r_inner lehet (ez ismert felső korlát).
-    """
-    rng = np.random.default_rng(seed)
-    angles = rng.uniform(0.0, 2.0 * np.pi, size=n)
-    radii = rng.uniform(r_inner, r_outer, size=n)
-    x = center[0] + radii * np.cos(angles)
-    y = center[1] + radii * np.sin(angles)
-    return np.column_stack((x, y))
+# az alakhibák paramétereinek alapértékei
+SHAPE_DEFAULTS = {
+    "none": {},
+    # ratio = b / a; a = R az x tengely mentén, b = ratio * R az y tengely mentén
+    "ellipse": {"ratio": 0.8},
+    # sides = oldalszám; az első csúcs a 0°-os irányban van
+    "polygon": {"sides": 6},
+}
 
 
 # ---------------------------------------------------------------------------
-# 2. A grafikus felület
+# Segédfüggvények a paraméterek ellenőrzéséhez
 # ---------------------------------------------------------------------------
-CANVAS_SIZE = 700          # a rajzterület logikai oldala (és kezdeti mérete)
-                           # képpontban; átméretezéskor erre skálázunk
-POINT_RADIUS = 3           # egy pont kirajzolt mérete (képpontban, nem skálázódik)
+def _is_number(value):
+    return (isinstance(value, numbers.Real) and not isinstance(value, bool)
+            and math.isfinite(value))
 
 
-class App:
-    def __init__(self, root):
-        self.root = root
-        root.title("Ponthalmaz-generátor")
+def _is_int(value):
+    return isinstance(value, numbers.Integral) and not isinstance(value, bool)
 
-        self.points = None  # a legutóbb generált pontok (a középponthoz képest)
-        self.r_in = self.r_out = None  # a legutóbb kirajzolt sáv sugarai
-        self._redraw_job = None        # átméretezéskor késleltetett újrarajzolás
 
-        # az ablak átméretezésekor a rajzterület (1. oszlop) nőjön/zsugorodjon
-        root.columnconfigure(1, weight=1)
-        root.rowconfigure(0, weight=1)
+def _check_number(value, name):
+    if not _is_number(value):
+        raise ValueError(f"{name}: véges szám kell (kapott érték: {value!r}).")
+    return float(value)
 
-        # --- bal oldali vezérlőpanel ---
-        panel = ttk.Frame(root, padding=10)
-        panel.grid(row=0, column=0, sticky="ns")
 
-        self.var_n = tk.StringVar(value="50")
-        self.var_rin = tk.StringVar(value="150")
-        self.var_rout = tk.StringVar(value="170")
-        self.var_seed = tk.StringVar(value="")
+def _arc_span(start, end):
+    """Az ív hossza fokban a kezdőszögtől pozitív irányban a végszögig.
+    A 0°-on átforduló ív is megengedett (pl. 300° -> 60° = 120°)."""
+    return (end - start) % 360.0
 
-        self._add_field(panel, 0, "Pontok száma:", self.var_n)
-        self._add_field(panel, 1, "Belső sugár:", self.var_rin)
-        self._add_field(panel, 2, "Külső sugár:", self.var_rout)
-        self._add_field(panel, 3, "Seed (üres = véletlen):", self.var_seed)
 
-        ttk.Button(panel, text="Generálás", command=self.generate).grid(
-            row=4, column=0, columnspan=2, pady=(12, 4), sticky="ew")
-
-        self.var_info = tk.StringVar(value="")
-        ttk.Label(panel, textvariable=self.var_info, wraplength=200,
-                  justify="left").grid(row=5, column=0, columnspan=2, pady=6)
-
-        self.var_error = tk.StringVar(value="")
-        ttk.Label(panel, textvariable=self.var_error, foreground="red",
-                  wraplength=200, justify="left").grid(
-            row=6, column=0, columnspan=2)
-
-        # --- jobb oldali rajzterület ---
-        self.canvas = tk.Canvas(root, width=CANVAS_SIZE, height=CANVAS_SIZE,
-                                bg="white", highlightthickness=1,
-                                highlightbackground="gray")
-        self.canvas.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
-        self.canvas.bind("<Configure>", self._on_resize)
-
-        self.generate()  # induláskor rögtön rajzoljon valamit
-
-        # ne lehessen használhatatlanul kicsire húzni az ablakot
-        root.update_idletasks()
-        root.minsize(panel.winfo_reqwidth() + 200, panel.winfo_reqheight() + 20)
-
-    def _on_resize(self, _event):
-        """Átméretezéskor újrarajzol; rövid késleltetéssel, hogy húzás közben
-        ne rajzoljon feleslegesen minden egyes képpontnyi változásnál."""
-        if self._redraw_job is not None:
-            self.root.after_cancel(self._redraw_job)
-        self._redraw_job = self.root.after(30, self._redraw)
-
-    def _redraw(self):
-        self._redraw_job = None
-        if self.points is not None:
-            self.draw(self.r_in, self.r_out)
-
-    @staticmethod
-    def _add_field(parent, row, label, variable):
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w",
-                                           pady=2)
-        ttk.Entry(parent, textvariable=variable, width=10).grid(
-            row=row, column=1, padx=(8, 0), pady=2)
-
-    # --- bemenet beolvasása és ellenőrzése ---
-    def _read_inputs(self):
-        """Visszaadja (n, r_in, r_out, seed) értékeket, vagy hibát dob."""
-        try:
-            n = int(self.var_n.get())
-        except ValueError:
-            raise ValueError("A pontok száma egész szám legyen.")
-        try:
-            r_in = float(self.var_rin.get().replace(",", "."))
-            r_out = float(self.var_rout.get().replace(",", "."))
-        except ValueError:
-            raise ValueError("A sugarak számok legyenek.")
-
-        seed_text = self.var_seed.get().strip()
-        if seed_text == "":
-            seed = None
+# ---------------------------------------------------------------------------
+# A szögek és a sugarak előállítása
+# ---------------------------------------------------------------------------
+def _make_offsets(rng, count, offset_start, length, mode, full_circle):
+    """count darab szögeltolást (fokban) ad az [offset_start, offset_start +
+    length] tartományban, egyenletes közzel vagy véletlenszerűen."""
+    if count == 0:
+        return np.empty(0)
+    if mode == "uniform":
+        if full_circle:
+            # teljes körön a 360° ugyanaz, mint a 0°, ezért azt kihagyjuk
+            t = np.arange(count) / count
+        elif count == 1:
+            t = np.array([0.5])
         else:
-            try:
-                seed = int(seed_text)
-            except ValueError:
-                raise ValueError("A seed egész szám legyen (vagy hagyd üresen).")
+            t = np.linspace(0.0, 1.0, count)
+        return offset_start + t * length
+    return offset_start + rng.uniform(0.0, length, size=count)
 
-        if n < 1:
-            raise ValueError("Legalább 1 pont kell.")
-        if r_in < 0:
-            raise ValueError("A belső sugár nem lehet negatív.")
-        if r_out < r_in:
-            raise ValueError("A külső sugár ne legyen kisebb a belsőnél.")
-        if r_out > CANVAS_SIZE / 2 - 5:
+
+def _shape_radius(theta, radius, shape, params):
+    """A névleges sugár az alakhibával torzítva, a theta szög (radián)
+    függvényében."""
+    if shape == "none":
+        return np.full_like(theta, radius)
+    if shape == "ellipse":
+        a = radius
+        b = radius * params["ratio"]
+        # az ellipszis polárkoordinátás egyenlete a középpontból nézve
+        return a * b / np.sqrt((b * np.cos(theta)) ** 2 + (a * np.sin(theta)) ** 2)
+    if shape == "polygon":
+        k = params["sides"]
+        sector = 2.0 * math.pi / k
+        phi = np.mod(theta, sector)
+        # csúcsok a névleges körön, az oldalak felezőpontja az apotémán
+        return radius * math.cos(math.pi / k) / np.cos(phi - math.pi / k)
+    raise AssertionError(shape)  # ide az ellenőrzés miatt nem juthatunk
+
+
+def _check_shape_params(shape, shape_params):
+    """Kiegészíti az alakhiba paramétereit az alapértékekkel és ellenőrzi
+    őket. Visszaadja a teljes paraméterszótárat."""
+    params = dict(SHAPE_DEFAULTS[shape])
+    if shape_params:
+        unknown = set(shape_params) - set(params)
+        if unknown:
             raise ValueError(
-                f"A külső sugár legfeljebb {CANVAS_SIZE // 2 - 5} lehet, "
-                "különben kilóg a rajzterületről.")
-        return n, r_in, r_out, seed
+                f"Ismeretlen paraméter a(z) '{shape}' alakhibához: "
+                f"{', '.join(sorted(unknown))}. "
+                f"Lehetséges: {', '.join(params) or 'nincs'}.")
+        params.update(shape_params)
 
-    # --- generálás + rajzolás ---
-    def generate(self):
+    if shape == "ellipse":
+        params["ratio"] = _check_number(params["ratio"], "Az ellipszis félátlóinak aránya")
+        if params["ratio"] <= 0:
+            raise ValueError("Az ellipszis félátlóinak aránya pozitív legyen.")
+    elif shape == "polygon":
+        if not _is_int(params["sides"]) or params["sides"] < 3:
+            raise ValueError("A sokszög oldalszáma legalább 3 legyen (egész szám).")
+        params["sides"] = int(params["sides"])
+    return params
+
+
+# ---------------------------------------------------------------------------
+# A generáló függvény
+# ---------------------------------------------------------------------------
+def generate_points(n, radius=100.0, center=(0.0, 0.0), *,
+                    arc=None, angle_mode="random",
+                    shape="none", shape_params=None,
+                    noise_level=0.0,
+                    outlier_fraction=0.0, outlier_distance=None,
+                    cluster_fraction=0.0, cluster_range=None,
+                    seed=None):
+    """
+    n darab pontot generál egy névleges kör (center, radius) mentén,
+    alak-, véletlen- és egyéb hibákkal.
+
+    Paraméterek:
+      n                 a pontok száma (egész, >= 1)
+      radius            a névleges kör sugara R (> 0)
+      center            a névleges kör középpontja (x, y)
+      arc               None = teljes kör, vagy (kezdőszög, végszög) fokban;
+                        az ív a kezdőszögtől pozitív (óramutatóval ellentétes)
+                        irányban tart a végszögig, átfordulhat a 0°-on is
+      angle_mode        "random" = véletlen szögek az íven,
+                        "uniform" = egyenletes közű szögek
+      shape             alakhiba: "none", "ellipse" vagy "polygon"
+      shape_params      az alakhiba paraméterei szótárban (ami hiányzik, az
+                        alapértéket kapja, lásd SHAPE_DEFAULTS):
+                          ellipse: ratio (b/a; a = R az x, b az y tengely
+                                   mentén)
+                          polygon: sides (oldalszám; a csúcsok a névleges
+                                   körön vannak, az első a 0°-os irányban)
+      noise_level       a véletlen hiba mértéke e (>= 0): minden pont sugara
+                        egyenletes eloszlású zajt kap a [-e, +e] tartományból
+                        (0 = nincs zaj). A zaj korlátos, így egy pont sem
+                        kerül e-nél messzebb a zaj nélküli helyétől.
+      outlier_fraction  a kiugró pontok aránya 0 és 1 között; ezek
+                        sugárirányban véletlenül kifelé vagy befelé
+                        d..2d távolságra kerülnek el a helyükről
+      outlier_distance  a fenti d; alapértelmezés: max(0.2 * R, 5 * noise_level)
+      cluster_fraction  egyenetlen pontsűrűség: a pontok ekkora hányada
+                        (0..1) a cluster_range szögtartományba kerül
+      cluster_range     (kezdőszög, végszög) fokban, az íven belül
+      seed              egész szám (>= 0) a reprodukálhatósághoz; ha None,
+                        a függvény sorsol egyet, és visszaadja a ground truth-ban
+
+    A sugárirányú távolság sosem lesz negatív (ha egy nagy befelé mutató hiba
+    miatt az lenne, 0-ra vágjuk), így a pont szöge mindig az íven belül marad.
+
+    Visszatérés: (points, ground_truth)
+      points        (n, 2) alakú NumPy tömb, minden sor egy (x, y) pont
+      ground_truth  szótár a generálás összes adatával (névleges középpont és
+                    sugár, lefedettség, hibatípusok és paramétereik, a kiugró
+                    pontok indexei, seed), JSON-ba menthető formában
+    """
+    # --- paraméterek ellenőrzése ---
+    if not _is_int(n) or n < 1:
+        raise ValueError("A pontok száma legalább 1 legyen (egész szám).")
+    n = int(n)
+    radius = _check_number(radius, "A névleges sugár")
+    if radius <= 0:
+        raise ValueError("A névleges sugár pozitív legyen.")
+    try:
+        cx, cy = center
+    except (TypeError, ValueError):
+        raise ValueError("A középpont egy (x, y) számpár legyen.")
+    cx = _check_number(cx, "A középpont x koordinátája")
+    cy = _check_number(cy, "A középpont y koordinátája")
+
+    if arc is None:
+        full_circle = True
+        arc_start, arc_end, span = 0.0, 360.0, 360.0
+    else:
         try:
-            n, r_in, r_out, seed = self._read_inputs()
-        except ValueError as e:
-            self.var_error.set(str(e))
-            return
-        self.var_error.set("")
+            arc_start, arc_end = arc
+        except (TypeError, ValueError):
+            raise ValueError("Az ív egy (kezdőszög, végszög) számpár legyen.")
+        arc_start = _check_number(arc_start, "Az ív kezdőszöge")
+        arc_end = _check_number(arc_end, "Az ív végszöge")
+        span = _arc_span(arc_start, arc_end)
+        if span == 0:
+            raise ValueError(
+                "Az ív kezdő- és végszöge nem lehet ugyanaz (360°-os eltérés "
+                "is ennek számít); teljes körhöz válaszd a teljes kört.")
+        full_circle = False
 
-        self.points = generate_points(n, r_in, r_out, seed=seed)
-        self.r_in, self.r_out = r_in, r_out
-        self.var_info.set(
-            f"{n} pont generálva.\n"
-            f"A sáv szélessége: {r_out - r_in:g}")
-        self.draw(r_in, r_out)
+    if angle_mode not in ANGLE_MODES:
+        raise ValueError(f"Ismeretlen szögeloszlás: {angle_mode!r} "
+                         f"(lehetséges: {', '.join(ANGLE_MODES)}).")
+    if shape not in SHAPE_TYPES:
+        raise ValueError(f"Ismeretlen alakhiba: {shape!r} "
+                         f"(lehetséges: {', '.join(SHAPE_TYPES)}).")
+    params = _check_shape_params(shape, shape_params)
 
-    def draw(self, r_in, r_out):
-        c = self.canvas
-        c.delete("all")
+    noise_level = _check_number(noise_level, "A véletlen hiba mértéke")
+    if noise_level < 0:
+        raise ValueError("A véletlen hiba mértéke (±e) nem lehet negatív.")
 
-        # a rajzterület aktuális mérete; a logikai CANVAS_SIZE x CANVAS_SIZE
-        # négyzetet a rövidebb oldalhoz skálázzuk, hogy mindig beférjen
-        w, h = c.winfo_width(), c.winfo_height()
-        if w <= 1 or h <= 1:          # még nincs megjelenítve az ablak
-            w = h = CANVAS_SIZE
-        scale = min(w, h) / CANVAS_SIZE
-        cx, cy = w / 2, h / 2
+    outlier_fraction = _check_number(outlier_fraction, "A kiugró pontok aránya")
+    if not 0 <= outlier_fraction <= 1:
+        raise ValueError("A kiugró pontok aránya 0 és 1 (0% és 100%) között legyen.")
+    if outlier_distance is None:
+        outlier_distance = max(0.2 * radius, 5.0 * noise_level)
+    outlier_distance = _check_number(outlier_distance, "A kiugró pontok távolsága")
+    if outlier_distance <= 0:
+        raise ValueError("A kiugró pontok távolsága pozitív legyen.")
 
-        # a sáv határai (szaggatott körök) és a középpont
-        for r in (r_in, r_out):
-            rs = r * scale
-            c.create_oval(cx - rs, cy - rs, cx + rs, cy + rs,
-                          outline="#aaaaaa", dash=(4, 4))
-        c.create_line(cx - 6, cy, cx + 6, cy, fill="#aaaaaa")
-        c.create_line(cx, cy - 6, cx, cy + 6, fill="#aaaaaa")
+    cluster_fraction = _check_number(cluster_fraction, "A sűrített pontok aránya")
+    if not 0 <= cluster_fraction <= 1:
+        raise ValueError("A sűrített pontok aránya 0 és 1 között legyen.")
+    cluster_offset = cluster_span = None
+    if cluster_fraction > 0:
+        try:
+            c_start, c_end = cluster_range
+        except (TypeError, ValueError):
+            raise ValueError("Egyenetlen sűrűséghez meg kell adni a sűrítés "
+                             "szögtartományát (kezdőszög, végszög).")
+        c_start = _check_number(c_start, "A sűrítés kezdőszöge")
+        c_end = _check_number(c_end, "A sűrítés végszöge")
+        cluster_span = _arc_span(c_start, c_end)
+        if cluster_span == 0:
+            raise ValueError("A sűrítés kezdő- és végszöge nem lehet ugyanaz.")
+        # a sűrítés tartománya az ív kezdetéhez képest
+        cluster_offset = (c_start - arc_start) % 360.0
+        if not full_circle and cluster_offset + cluster_span > span + 1e-9:
+            raise ValueError("A sűrítés szögtartománya az íven belül legyen.")
+        cluster_range = (c_start, c_end)
+    else:
+        cluster_range = None
 
-        # a pontok (a y tengelyt megfordítjuk, mert a képernyőn lefelé nő)
-        for x, y in self.points:
-            px, py = cx + x * scale, cy - y * scale
-            c.create_oval(px - POINT_RADIUS, py - POINT_RADIUS,
-                          px + POINT_RADIUS, py + POINT_RADIUS,
-                          fill="#1f6fd0", outline="")
+    if seed is None:
+        # sorsolunk egy seedet, hogy a "véletlen" halmaz is visszaállítható legyen
+        seed = int(np.random.default_rng().integers(0, 2**31 - 1))
+    elif not _is_int(seed) or seed < 0:
+        raise ValueError("A seed nemnegatív egész szám legyen (vagy None).")
+    seed = int(seed)
+    rng = np.random.default_rng(seed)
 
+    # --- 1. a szögek (az ív kezdetétől mért eltolás fokban) ---
+    n_cluster = int(round(cluster_fraction * n))
+    offsets = np.concatenate((
+        _make_offsets(rng, n - n_cluster, 0.0, span, angle_mode, full_circle),
+        _make_offsets(rng, n_cluster, cluster_offset, cluster_span, angle_mode,
+                      full_circle and cluster_span == 360.0),
+    ))
+    angles_deg = arc_start + offsets
+    theta = np.radians(angles_deg)
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    App(root)
-    root.mainloop()
+    # --- 2. alakhiba ---
+    r = _shape_radius(theta, radius, shape, params)
+
+    # --- 3. véletlen hiba (sugárirányú, egyenletes eloszlású zaj ±e) ---
+    if noise_level > 0:
+        r = r + rng.uniform(-noise_level, noise_level, size=n)
+
+    # --- 4. kiugró pontok ---
+    n_out = int(round(outlier_fraction * n))
+    outlier_idx = np.sort(rng.choice(n, size=n_out, replace=False))
+    if n_out:
+        signs = rng.choice((-1.0, 1.0), size=n_out)
+        r[outlier_idx] += signs * rng.uniform(outlier_distance,
+                                              2.0 * outlier_distance, size=n_out)
+
+    r = np.maximum(r, 0.0)
+    points = np.column_stack((cx + r * np.cos(theta), cy + r * np.sin(theta)))
+
+    ground_truth = {
+        "n": n,
+        "center": [cx, cy],
+        "radius": radius,
+        "coverage": {
+            "full_circle": full_circle,
+            "start_deg": arc_start,
+            "end_deg": arc_end,
+            "span_deg": span,
+            "angle_mode": angle_mode,
+        },
+        "shape_error": {"type": shape, "params": params},
+        "random_error": {"level": noise_level},  # egyenletes zaj ±level
+        "outliers": {
+            "fraction": outlier_fraction,
+            "count": n_out,
+            "distance": outlier_distance,
+            "indices": outlier_idx.tolist(),
+        },
+        "density": {
+            "cluster_fraction": cluster_fraction,
+            "cluster_count": n_cluster,
+            "cluster_range_deg": None if cluster_range is None else list(cluster_range),
+        },
+        "seed": seed,
+    }
+    return points, ground_truth
