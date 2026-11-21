@@ -255,11 +255,14 @@ def generate_points(n, radius=100.0, center=(0.0, 0.0), *,
         raise ValueError("A sűrített pontok aránya 0 és 1 között legyen.")
     cluster_offset = cluster_span = None
     if cluster_fraction > 0:
+        missing_range = ("Egyenetlen sűrűséghez meg kell adni a sűrítés "
+                         "szögtartományát (kezdőszög, végszög).")
+        if cluster_range is None:
+            raise ValueError(missing_range)
         try:
             c_start, c_end = cluster_range
-        except (TypeError, ValueError):
-            raise ValueError("Egyenetlen sűrűséghez meg kell adni a sűrítés "
-                             "szögtartományát (kezdőszög, végszög).")
+        except (TypeError, ValueError):   # pl. nem két elemű a megadott érték
+            raise ValueError(missing_range)
         c_start = _check_number(c_start, "A sűrítés kezdőszöge")
         c_end = _check_number(c_end, "A sűrítés végszöge")
         cluster_span = _arc_span(c_start, c_end)

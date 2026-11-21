@@ -32,6 +32,7 @@ import tkinter.font as tkfont
 from tkinter import ttk
 
 import numpy as np
+
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from matplotlib.patches import Circle
@@ -47,6 +48,8 @@ SEED = 1                  # minden módszer ezt a seedet kapja: ugyanazzal a
 DEFAULT_MAX_ITER = 200
 BEST_ROW_COLOR = "#d6f0d6"     # a legkisebb szélességű sor háttérszíne
 NOMINAL_ROW_COLOR = "#eeeeee"  # a névleges (várt) sor háttérszíne
+HIGHLIGHT_TEXT_COLOR = "#1a1a1a"  # a két kiemelt sor betűszíne (sötét és
+                                  # világos módban is olvasható)
 NOMINAL_COLOR = "#888888"      # a névleges kör színe a grafikonon
 NOMINAL_ID = "nominal"         # a névleges sor azonosítója a táblázatban
 
@@ -107,6 +110,7 @@ class VizsgaloApp:
         master.destroy).
         on_back: a "Vissza a generátorhoz" gombra hívandó függvény; ha
         None, a gomb nem jelenik meg."""
+
         self.master = master
         self.points = np.asarray(points, dtype=float)
         self.ground_truth = ground_truth
@@ -159,9 +163,13 @@ class VizsgaloApp:
         bold.configure(weight="bold")
         italic = tkfont.nametofont("TkDefaultFont").copy()
         italic.configure(slant="italic")
-        self.tree.tag_configure("best", background=BEST_ROW_COLOR, font=bold)
+        
+        # a kiemelt sorok betűszíne rögzített (sötét): a rendszer alapszíne
+        # sötét módban fehér, ami a világos háttéren olvashatatlan lenne
+        self.tree.tag_configure("best", background=BEST_ROW_COLOR,
+                                foreground=HIGHLIGHT_TEXT_COLOR, font=bold)
         self.tree.tag_configure("nominal", background=NOMINAL_ROW_COLOR,
-                                font=italic)
+                                foreground=HIGHLIGHT_TEXT_COLOR, font=italic)
         self.tree.pack(fill="x")
         self.tree.bind("<<TreeviewSelect>>", lambda _e: self.draw())
         ttk.Label(bottom, foreground="#666666", wraplength=1180, justify="left",
@@ -279,8 +287,8 @@ class VizsgaloApp:
         title = ""
         selection = self.tree.selection()
         if selection:
-            if selection[0] == NOMINAL_ID:
-                nom = self.nominal
+            nom = self.nominal
+            if selection[0] == NOMINAL_ID and nom is not None:
                 name, (a, b) = "Névleges (várt)", nom["center"]
                 r, big_r, width = nom["r"], nom["R"], nom["width"]
             else:
@@ -320,6 +328,7 @@ class VizsgaloApp:
         """macOS-en (Tk 9) átméretezés után a ttk gombok néha nem rajzolódnak
         újra; az átméretezés végén egy semmit nem változtató configure-hívás
         kikényszeríti az újrarajzolást (lásd gui.py)."""
+       
         if event.widget is not self.master:
             return
         if self._refresh_job is not None:
@@ -330,6 +339,7 @@ class VizsgaloApp:
         """Az ablak összes ttk elemén végrehajt egy semmit nem változtató
         configure-hívást, hogy újrarajzolódjanak (rekurzívan bejárja az
         elemeket)."""
+       
         self._refresh_job = None
         for child in (widget or self.master).winfo_children():
             if isinstance(child, ttk.Widget):
@@ -339,6 +349,7 @@ class VizsgaloApp:
     def close(self):
         """Az ablak bezárása: leállítja a függő időzítést, és meghívja az
         on_close függvényt (a main.py-ban ez kilépteti a programot)."""
+        
         if self._refresh_job is not None:
             self.master.after_cancel(self._refresh_job)
         self.on_close()
@@ -347,6 +358,8 @@ class VizsgaloApp:
         """A "Vissza a generátorhoz" gomb: leállítja a függő időzítést, és
         meghívja az on_back függvényt (a main.py-ban ez bezárja ezt az
         ablakot, és újra megjeleníti a generátort)."""
+        
         if self._refresh_job is not None:
             self.master.after_cancel(self._refresh_job)
-        self.on_back()
+        if self.on_back is not None:
+            self.on_back()
