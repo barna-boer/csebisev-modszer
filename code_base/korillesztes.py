@@ -295,13 +295,15 @@ def genetic_algorithm(points, max_iter=200, seed=None, bounds=None):
     size = a_max - a_min
     evaluations = 0
 
-    # 1) kezdeti populáció: minden egyed egy [a, b, szélesség] lista
+    # 1) kezdeti populáció: minden egyed egy (a, b, f) hármas, ahol f az
+    #    egyed szélessége (a rátermettsége)
     population = []
     for i in range(GA_POPULATION):
         a = rnd.uniform(a_min, a_max)
         b = rnd.uniform(b_min, b_max)
-        population.append([a, b, width_at(points, a, b)])
+        f = width_at(points, a, b)
         evaluations += 1
+        population.append((a, b, f))
 
     for generation in range(max_iter):
         # a mutáció mérete generációról generációra csökken
@@ -313,15 +315,18 @@ def genetic_algorithm(points, max_iter=200, seed=None, bounds=None):
         while len(children) < GA_POPULATION:
             # 3) szelekció: két-két véletlen egyed közül a jobbik lesz a
             # szülő (a rátermettebb nagyobb eséllyel, de nem biztosan)
-            parent1 = select_parent(population, rnd)
-            parent2 = select_parent(population, rnd)
+            parent1_a, parent1_b, parent1_f = select_parent(population, rnd)
+            parent2_a, parent2_b, parent2_f = select_parent(population, rnd)
 
             # kereszteződés: az a koordinátát az egyik, a b-t a másik
             # szülőtől örökli a gyermek
             if rnd.random() < GA_CROSSOVER_RATE:
-                child_a, child_b = parent1[0], parent2[1]
+                child_a = parent1_a
+                child_b = parent2_b
             else:
-                child_a, child_b = parent1[0], parent1[1]
+                # nincs kereszteződés: a gyermek az első szülő másolata
+                child_a = parent1_a
+                child_b = parent1_b
 
             # mutáció: kis véletlen elmozdítás
             if rnd.random() < GA_MUTATION_RATE:
@@ -331,29 +336,36 @@ def genetic_algorithm(points, max_iter=200, seed=None, bounds=None):
             child_b = clamp(child_b, b_min, b_max)
 
             # az új egyed kiértékelése
-            children.append([child_a, child_b,
-                             width_at(points, child_a, child_b)])
+            child_f = width_at(points, child_a, child_b)
             evaluations += 1
+            children.append((child_a, child_b, child_f))
 
         # a legrosszabbak eldobása: szélesség szerint sorba rendezzük a régi
         # és az új egyedeket, és csak a legjobbak maradnak
         everyone = population + children
-        everyone.sort(key=lambda individual: individual[2])
+        everyone.sort(key=get_width)
         population = everyone[:GA_POPULATION]
 
-    best = population[0]          # a sorba rendezés miatt az első a legjobb
-    return make_result("Genetikus algoritmus", points, best[0], best[1],
+    # a sorba rendezés miatt az első egyed a legjobb
+    best_a, best_b, best_f = population[0]
+    return make_result("Genetikus algoritmus", points, best_a, best_b,
                        evaluations, start_time)
+
+
+def get_width(individual):
+    """Egy (a, b, f) egyed szélessége (f); a populáció sorba rendezéséhez."""
+    a, b, f = individual
+    return f
 
 
 def select_parent(population, rnd):
     """Szelekció versengéssel: két véletlen egyed közül a jobbik (a kisebb
-    szélességű) lesz a szülő."""
-    first = rnd.choice(population)
-    second = rnd.choice(population)
-    if first[2] < second[2]:
-        return first
-    return second
+    szélességű) lesz a szülő. Visszatérés: (a, b, f)."""
+    first_a, first_b, first_f = rnd.choice(population)
+    second_a, second_b, second_f = rnd.choice(population)
+    if first_f < second_f:
+        return first_a, first_b, first_f
+    return second_a, second_b, second_f
 
 
 # --- 3.4 Részecskeraj-optimalizálás (PSO) ---
@@ -364,7 +376,7 @@ PSO_C2 = 1.5        # c2: mennyire húz a raj legjobb helye felé
 
 
 def particle_swarm(points, max_iter=200, seed=None, bounds=None):
-    """Részecskeraj-optimalizálás, PSO (5. előadás, 22-23. dia).
+    """Részecskeraj-optimalizálás
 
     Minden részecskének van helye (x = egy középpont), sebessége (v),
     és megjegyzi a saját eddigi legjobb helyét (p). A raj az összes
@@ -387,48 +399,66 @@ def particle_swarm(points, max_iter=200, seed=None, bounds=None):
     evaluations = 0
 
     # 1) a pontok kezdeti helye és sebessége
-    positions = []        # [a, b]
-    velocities = []       # [va, vb]
-    own_best = []         # [a, b, szélesség]: a részecske eddigi legjobbja
+    #    (az i-edik részecske adatai minden listában az i-edik helyen vannak)
+    pos_a = []         # a részecskék helye (x)
+    pos_b = []
+    vel_a = []         # a részecskék sebessége (v)
+    vel_b = []
+    own_best_a = []    # a részecskék saját eddigi legjobb helye (p)
+    own_best_b = []
+    own_best_f = []    # és ott a szélesség
     for i in range(PSO_SWARM):
         a = rnd.uniform(a_min, a_max)
         b = rnd.uniform(b_min, b_max)
         f = width_at(points, a, b)
         evaluations += 1
-        positions.append([a, b])
-        velocities.append([rnd.uniform(-0.01, 0.01) * size,
-                           rnd.uniform(-0.01, 0.01) * size])
-        own_best.append([a, b, f])
+        pos_a.append(a)
+        pos_b.append(b)
+        vel_a.append(rnd.uniform(-0.01, 0.01) * size)
+        vel_b.append(rnd.uniform(-0.01, 0.01) * size)
+        own_best_a.append(a)
+        own_best_b.append(b)
+        own_best_f.append(f)
 
-    # a raj legjobbja (g)
-    swarm_best = min(own_best, key=lambda p: p[2])[:]
+    # a raj legjobbja (g): a legkisebb szélességű saját legjobb
+    swarm_best_a, swarm_best_b, swarm_best_f = own_best_a[0], own_best_b[0], own_best_f[0]
+    for i in range(1, PSO_SWARM):
+        if own_best_f[i] < swarm_best_f:
+            swarm_best_a, swarm_best_b, swarm_best_f = own_best_a[i], own_best_b[i], own_best_f[i]
 
     for iteration in range(max_iter):
         for i in range(PSO_SWARM):
-            # 3) az új sebesség és hely, koordinátánként
-            for d in range(2):                # d = 0: a, d = 1: b
-                r1 = rnd.random()
-                r2 = rnd.random()
-                velocities[i][d] = (PSO_INERTIA * velocities[i][d]
-                                    + PSO_C1 * r1 * (own_best[i][d] - positions[i][d])
-                                    + PSO_C2 * r2 * (swarm_best[d] - positions[i][d]))
-                positions[i][d] = positions[i][d] + velocities[i][d]
-            positions[i][0] = clamp(positions[i][0], a_min, a_max)
-            positions[i][1] = clamp(positions[i][1], b_min, b_max)
+            # 3) az új sebesség: v = w*v + c1*r1*(p - x) + c2*r2*(g - x)
+            r1 = rnd.random()
+            r2 = rnd.random()
+            vel_a[i] = (PSO_INERTIA * vel_a[i]
+                        + PSO_C1 * r1 * (own_best_a[i] - pos_a[i])
+                        + PSO_C2 * r2 * (swarm_best_a - pos_a[i]))
+            r1 = rnd.random()
+            r2 = rnd.random()
+            vel_b[i] = (PSO_INERTIA * vel_b[i]
+                        + PSO_C1 * r1 * (own_best_b[i] - pos_b[i])
+                        + PSO_C2 * r2 * (swarm_best_b - pos_b[i]))
+
+            # az új hely: x = x + v (a keresési tartományon belül)
+            pos_a[i] = clamp(pos_a[i] + vel_a[i], a_min, a_max)
+            pos_b[i] = clamp(pos_b[i] + vel_b[i], b_min, b_max)
 
             # az új hely kiértékelése
-            a, b = positions[i]
+            a = pos_a[i]
+            b = pos_b[i]
             f = width_at(points, a, b)
             evaluations += 1
 
-            # a saját és a raj legjobbjának frissítése
-            if f < own_best[i][2]:
-                own_best[i] = [a, b, f]
-                if f < swarm_best[2]:
-                    swarm_best = [a, b, f]
+            # ha jobb, mint a saját legjobb (p), az lesz az új p;
+            # ha jobb, mint a raj legjobbja (g), az lesz az új g
+            if f < own_best_f[i]:
+                own_best_a[i], own_best_b[i], own_best_f[i] = a, b, f
+                if f < swarm_best_f:
+                    swarm_best_a, swarm_best_b, swarm_best_f = a, b, f
 
-    return make_result("Részecskeraj (PSO)", points, swarm_best[0],
-                       swarm_best[1], evaluations, start_time)
+    return make_result("Részecskeraj (PSO)", points, swarm_best_a,
+                       swarm_best_b, evaluations, start_time)
 
 
 # --- 3.5 A módszerek listája ---

@@ -22,37 +22,48 @@ from code_base.vizsgalo_gui import VizsgaloApp
 
 
 # ===========================================================================
-# 1. A két ablak összekötése
+# 1. A program: a két ablak és az átváltás közöttük
 # ===========================================================================
-def open_analysis(root, points, ground_truth):
-    """A generátorablakot elrejti, és megnyitja a vizsgáló ablakot.
+class Program:
+    """A program két ablaka: a generátor (ez a fő ablak) és a vizsgáló
+    ablak, amely csak a "Vizsgálat indítása" gomb után nyílik meg."""
 
-    Egyetlen Tk gyökér van: a generátor a gyökérablak maga, a vizsgáló egy
-    Toplevel ablak. A vizsgáló bezárásakor a gyökeret is megszüntetjük, így
-    a program kilép, és nem marad rejtett ablak. A "Vissza a generátorhoz"
-    gombra csak a vizsgáló ablak záródik be, a generátor újra megjelenik."""
-    root.withdraw()
-    window = tk.Toplevel(root)
+    def __init__(self):
+        """Létrehozza a fő ablakot, és megnyitja benne a generátort."""
+        self.root = tk.Tk()
+        self.analysis_window = None     # a vizsgáló ablak (ha nyitva van)
+        App(self.root, self.open_analysis)
 
-    def back_to_generator():
-        """Bezárja a vizsgáló ablakot, és újra megjeleníti a generátort."""
-        window.destroy()
-        root.deiconify()
+    def open_analysis(self, points, ground_truth):
+        """A "Vizsgálat indítása" gomb: elrejti a generátort, és megnyitja a
+        vizsgáló ablakot a ponthalmazzal."""
+        self.root.withdraw()                         # a generátor elrejtése
+        self.analysis_window = tk.Toplevel(self.root)
+        VizsgaloApp(self.analysis_window, points, ground_truth,
+                    self.close_program, self.back_to_generator)
 
-    VizsgaloApp(window, points, ground_truth, on_close=root.destroy,
-                on_back=back_to_generator)
+    def back_to_generator(self):
+        """A "Vissza a generátorhoz" gomb: bezárja a vizsgáló ablakot, és
+        újra megjeleníti a generátort."""
+        if self.analysis_window is not None:
+            self.analysis_window.destroy()
+            self.analysis_window = None
+        self.root.deiconify()                        # a generátor megjelenítése
+
+    def close_program(self):
+        """A vizsgáló ablak bezárása (X): a fő ablakot is bezárja, így a
+        program kilép (nem marad rejtett ablak)."""
+        self.root.destroy()
+
+    def run(self):
+        """Elindítja az eseményhurkot: a program addig fut, amíg be nem
+        zárják."""
+        self.root.mainloop()
 
 
 # ===========================================================================
 # 2. Indítás
 # ===========================================================================
-def main():
-    """Elindítja a programot: létrehozza a Tk gyökérablakot, megnyitja benne
-    a generátort, és elindítja az eseményhurkot (az ablak bezárásáig fut)."""
-    root = tk.Tk()
-    App(root, on_analyze=lambda points, gt: open_analysis(root, points, gt))
-    root.mainloop()
-
-
 if __name__ == "__main__":
-    main()
+    program = Program()
+    program.run()
