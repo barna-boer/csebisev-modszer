@@ -6,375 +6,429 @@ közé minden pont befér, és a sugaraik különbsége (a gyűrű szélessége)
 minimális. Egy (a, b) középpont esetén
     r = a pontok legkisebb távolsága a középponttól   (belső kör)
     R = a pontok legnagyobb távolsága a középponttól  (külső kör)
-    célérték = R - r                                   (ezt minimalizáljuk)
-A keresés tehát a kétdimenziós (a, b) síkon zajlik.
+    célfüggvény: f(a, b) = R - r                       (ezt minimalizáljuk)
+Egy állapot tehát egy (a, b) középpont, a keresés a síkon zajlik.
 
-Tartalom:
-  1. célfüggvény (Objective) és eredményobjektum (FitResult)
-  2. négy keresőmódszer azonos felülettel: f(points, max_iter, seed, bounds=None)
-       - hegymászó véletlen újraindítással
-       - szimulált hűtés
-       - genetikus algoritmus (valós kódolás)
-       - részecskeraj-optimalizálás (PSO)
-  3. fit_all: mind a négy módszer lefuttatása ugyanarra a ponthalmazra
+A négy keresőmódszer az előadások (Keresés II-III.) lépéseit követi:
+  - hegymászó algoritmus véletlen újraindítással (4. előadás, 45. és 50. dia)
+  - szimulált hűtés (4. előadás, 51-53. dia)
+  - genetikus algoritmus (4. előadás, 60-66. dia)
+  - részecskeraj-optimalizálás, PSO (5. előadás, 22-23. dia)
+Mivel minimalizálunk, az előadásbeli "f(s') >= f(s)" (jobb) feltétel itt
+"f(s') < f(s)" lesz: a kisebb szélesség a jobb.
 
-Grafikus kódot (tkinter, matplotlib) nem importál. Csak a NumPy-t használja.
+Az előadásokban a keresés célállapotnál áll meg. Itt nem tudjuk előre, mekkora
+a legkisebb szélesség, ezért a leállási feltétel az iterációk száma (max_iter).
+
+Grafikus kódot (tkinter, matplotlib) nem importál.
 """
 
 import math
+import random
 import time
-from dataclasses import dataclass, field
 
 import numpy as np
 
 
 # ===========================================================================
-# 1. Célfüggvény és eredményobjektum
+# 1. Célfüggvény és eredmény
 # ===========================================================================
-class Objective:
-    """A Csebisev-célfüggvény egy ponthalmazra: középpont(ok) -> R - r.
+def width_at(points, a, b):
+    """A célfüggvény: az (a, b) középpontú gyűrű szélessége, R - r.
 
-    Egyszerre egy középpontot ((2,) alakú tömb) vagy sok középpontot ((m, 2)
-    alakú tömb) is kiértékel vektorizáltan. Minden középpont egy
-    kiértékelésnek számít; a számlálót az `evaluations` mező tárolja.
-    """
-
-    # ennyi távolságot számolunk egyszerre legfeljebb (memóriakorlát a nagy
-    # rácsokhoz)
-    CHUNK = 2_000_000
-
-    def __init__(self, points):
-        """points: a ponthalmaz, (n, 2) alakú tömb. A kiértékelések
-        számlálója nulláról indul."""
-        self.points =np.asarray(points, dtype=float)
-        if self.points.ndim != 2 or self.points.shape[1] != 2 or len(self.points) == 0:
-            raise ValueError("A pontok (n, 2) alakú, nem üres tömbben legyenek.")
-        self.evaluations = 0
-
-    def __call__(self, centers):
-        """A gyűrű szélessége (R - r) egy (a, b) középpontra, vagy egy
-        (m, 2) alakú tömb minden középpontjára egyszerre. Minden
-        középpont egy kiértékelésnek számít."""
-        centers =np.asarray(centers, dtype=float)
-        single = centers.ndim == 1
-        centers = np.atleast_2d(centers)
-        self.evaluations += len(centers)
-
-        widths = np.empty(len(centers))
-        step = max(1, self.CHUNK // len(self.points))
-        for start in range(0, len(centers), step):
-            c = centers[start:start + step]
-            # d[i, j] = a j-edik pont távolsága az i-edik középponttól
-            d = np.hypot(self.points[:, 0] - c[:, :1], self.points[:, 1] - c[:, 1:])
-            widths[start:start + step] = d.max(axis=1) - d.min(axis=1)
-        return widths[0] if single else widths
+    A távolságokat a numpy egyszerre számolja ki az összes pontra."""
+    distances = np.hypot(points[:, 0] - a, points[:, 1] - b)
+    return float(distances.max() - distances.min())
 
 
 def ring(points, center):
     """Egy középponthoz tartozó gyűrű: (r, R, R - r)."""
     points = np.asarray(points, dtype=float)
-    d = np.hypot(points[:, 0] - center[0], points[:, 1] - center[1])
-    return float(d.min()), float(d.max()), float(d.max() - d.min())
+    distances = np.hypot(points[:, 0] - center[0], points[:, 1] - center[1])
+    r = float(distances.min())
+    big_r = float(distances.max())
+    return r, big_r, big_r - r
 
 
-@dataclass
 class FitResult:
-    """Egy illesztés eredménye."""
-    method: str                 # a módszer neve (magyarul)
-    center: tuple               # a megtalált középpont (a, b)
-    r_inner: float              # a belső kör sugara (r)
-    r_outer: float              # a külső kör sugara (R)
-    width: float                # a gyűrű szélessége: R - r (a célérték)
-    history: np.ndarray         # a legjobb célérték az egyes iterációk végén
-    history_evals: np.ndarray   # a kiértékelések száma az egyes iterációk végén
-    evaluations: int            # a célfüggvény-kiértékelések száma összesen
-    iterations: int             # a lefutott iterációk száma
-    time_s: float               # futásidő másodpercben (time.perf_counter)
-    seed: object = None         # a használt seed
-    extra: dict = field(default_factory=dict)  # módszerfüggő adatok
+    """Egy keresés eredménye."""
+
+    def __init__(self, method, center, r_inner, r_outer, width, evaluations,
+                 time_s):
+        """method: a módszer neve; center: a talált középpont (a, b);
+        r_inner, r_outer: a belső és a külső kör sugara; width: R - r;
+        evaluations: a célfüggvény-kiértékelések száma;
+        time_s: a futásidő másodpercben."""
+        self.method = method
+        self.center = center
+        self.r_inner = r_inner
+        self.r_outer = r_outer
+        self.width = width
+        self.evaluations = evaluations
+        self.time_s = time_s
 
 
-def _finish(method, points, best_x, objective, history, history_evals, t0,
-            seed=None, extra=None):
-    """Összeállítja az eredményobjektumot a keresés végén."""
-    elapsed = time.perf_counter() - t0
-    r_in, r_out, width = ring(points, best_x)
-    return FitResult(
-        method=method, center=(float(best_x[0]), float(best_x[1])),
-        r_inner=r_in, r_outer=r_out, width=width,
-        history=np.asarray(history, dtype=float),
-        history_evals=np.asarray(history_evals, dtype=int),
-        evaluations=objective.evaluations, iterations=len(history),
-        time_s=elapsed, seed=seed, extra=extra or {})
+def make_result(method, points, a, b, evaluations, start_time):
+    """A keresés végén összeállítja az eredményt a legjobb középpontból."""
+    r, big_r, width = ring(points, (a, b))
+    time_s = time.perf_counter() - start_time
+    return FitResult(method, (float(a), float(b)), r, big_r, width,
+                     evaluations, time_s)
 
 
 # ===========================================================================
-# 2. A keresési tartomány és a módszerek közös előkészítése
+# 2. Közös segédfüggvények
 # ===========================================================================
 def default_bounds(points, scale=2.0):
-    """A keresési tartomány: a ponthalmaz befoglaló téglalapjának közepe
-    körüli négyzet, amelynek oldala a befoglaló téglalap hosszabbik
-    oldalának `scale`-szerese.
+    """A keresési tartomány: egy négyzet a ponthalmaz közepe körül, amelynek
+    oldala a ponthalmaz szélességének (vagy magasságának) `scale`-szerese.
 
-    Azért négyzet, hogy egy keskeny ívdarabnál se legyen elfajult a
-    tartomány. Rövid ívdarabnál az optimális középpont messze lehet a
-    pontoktól, ilyenkor a `scale` értékét növelni kell.
-
-    Visszatérés: (lo, hi), két (2,) alakú tömb: a tartomány bal alsó és
-    jobb felső sarka.
-    """
+    Visszatérés: (a_min, a_max, b_min, b_max)."""
     points = np.asarray(points, dtype=float)
-    if scale <= 0:
-        raise ValueError("A keresési tartomány szorzója pozitív legyen.")
-    lo, hi = points.min(axis=0), points.max(axis=0)
-    mid = (lo + hi) / 2.0
-    half = max(float((hi - lo).max()), 1e-9) * scale / 2.0
-    return mid - half, mid + half
+    x_min, x_max = points[:, 0].min(), points[:, 0].max()
+    y_min, y_max = points[:, 1].min(), points[:, 1].max()
+    middle_x = (x_min + x_max) / 2
+    middle_y = (y_min + y_max) / 2
+    half = max(x_max - x_min, y_max - y_min, 1e-9) * scale / 2
+    return (float(middle_x - half), float(middle_x + half),
+            float(middle_y - half), float(middle_y + half))
 
 
-def _prepare(points, bounds, seed):
-    """A módszerek közös előkészítése: célfüggvény, tartomány, véletlen-
-    generátor, a tartomány mérete."""
+def clamp(value, low, high):
+    """A value értéket a [low, high] tartományba szorítja."""
+    return max(low, min(value, high))
+
+
+def prepare(points, max_iter, bounds):
+    """A módszerek közös előkészítése: ellenőrzi a bemenetet, és visszaadja
+    a pontokat numpy tömbként meg a keresési tartományt."""
     points = np.asarray(points, dtype=float)
-    objective = Objective(points)
+    if points.ndim != 2 or points.shape[1] != 2 or len(points) == 0:
+        raise ValueError("A pontok (n, 2) alakú, nem üres tömbben legyenek.")
+    if max_iter < 1:
+        raise ValueError("Az iterációk száma legalább 1 legyen.")
     if bounds is None:
         bounds = default_bounds(points)
-    lo = np.asarray(bounds[0], dtype=float)
-    hi = np.asarray(bounds[1], dtype=float)
-    if lo.shape != (2,) or hi.shape != (2,) or np.any(hi <= lo):
-        raise ValueError("A keresési tartomány ((a_min, b_min), (a_max, b_max)) legyen.")
-    size = float((hi - lo).max())
-    rng = np.random.default_rng(seed)
-    return points, objective, lo, hi, size, rng
-
-
-def _check_iter(max_iter):
-    """Ellenőrzi, hogy az iterációk száma legalább 1 értékű egész szám."""
-    if isinstance(max_iter, bool) or not isinstance(max_iter, (int, np.integer)) or max_iter < 1:
-        raise ValueError("Az iterációk száma legalább 1 legyen (egész szám).")
-    return int(max_iter)
+    return points, bounds
 
 
 # ===========================================================================
 # 3. Keresőmódszerek
 #
 # Mindegyik felülete: f(points, max_iter, seed, bounds=None) -> FitResult
-# Az "iteráció" módszerenként mást jelent (lásd az egyes függvényeknél),
-# ezért az eredményben a célfüggvény-kiértékelések számát is jelentjük:
-# a módszerek igazságos összehasonlításához ez a jobb mérőszám.
+# A seed a véletlenszám-generátor kezdőértéke: ugyanazzal a seeddel mindig
+# ugyanaz az eredmény jön ki.
+# Egy "iteráció" módszerenként mást jelent, ezért a célfüggvény-
+# kiértékeléseket is számoljuk: a módszerek összehasonlításához ez a jobb.
 # ===========================================================================
 
-# --- 3.1 Hegymászó véletlen újraindítással ---
-def hill_climbing(points, max_iter=200, seed=None, bounds=None,
-                  step0=0.1, min_step=1e-10):
-    """Hegymászó keresés véletlen újraindítással.
+# --- 3.1 Hegymászó algoritmus véletlen újraindítással ---
+# a 8 szomszéd iránya: fel, le, jobbra, balra és a 4 átló
+DIRECTIONS = [(1, 0), (-1, 0), (0, 1), (0, -1),
+              (0.7071, 0.7071), (0.7071, -0.7071),
+              (-0.7071, 0.7071), (-0.7071, -0.7071)]
+HC_START_STEP = 0.1    # a kezdő lépésköz a tartomány méretéhez képest
+HC_MIN_STEP = 1e-10    # ennél kisebb lépésköznél lokális optimumon vagyunk
 
-    Egy iteráció = egy lépés: a jelenlegi pont körül 8 szomszédot nézünk
-    meg (8 irányban, `step` távolságra, véletlenül elforgatott
-    irányokkal), és a legjobbra lépünk, ha az jobb a jelenleginél
-    (8 kiértékelés / iteráció).
-    Ha egyik szomszéd sem jobb, a lépésközt felezzük. Ha a lépésköz
-    `min_step * tartományméret` alá csökken, egy lokális minimumba
-    jutottunk: újraindulunk egy véletlen pontból (+1 kiértékelés).
+
+def hill_climbing(points, max_iter=200, seed=None, bounds=None):
+    """Hegymászó algoritmus véletlen újraindítással (4. előadás, 45. és 50. dia).
+
+    1) Legyen s egy véletlen kezdeti állapot.
+    2) Ha a leállási feltétel teljesül (elfogyott a max_iter), állj le.
+    3) Állítsd elő s mind a 8 szomszédját (s-től `step` távolságra);
+       ha a legjobb s' szomszéd jobb, mint s, akkor legyen s = s'.
+       Ha egyik sem jobb, felezzük a lépésközt (közelebbi szomszédokat
+       nézünk). Ha a lépésköz már nagyon kicsi, lokális optimumon vagyunk:
+       véletlen újraindítás ("sörétes puska" elv, 50. dia).
+    Egy iteráció = a 8 szomszéd megvizsgálása (8 kiértékelés).
     """
-    
-    max_iter = _check_iter(max_iter)
-    t0 = time.perf_counter()
-    points, objective, lo, hi, size, rng = _prepare(points, bounds, seed)
+    start_time = time.perf_counter()
+    points, (a_min, a_max, b_min, b_max) = prepare(points, max_iter, bounds)
+    rnd = random.Random(seed)
+    size = a_max - a_min
+    evaluations = 0
 
-    angles = np.arange(8) * (np.pi / 4)
-    x = rng.uniform(lo, hi)
-    fx = objective(x)
-    step = step0 * size
-    best_x, best_f = x.copy(), fx
-    restarts = 0
-    history, history_evals = [], []
+    # 1) véletlen kezdeti állapot
+    a = rnd.uniform(a_min, a_max)
+    b = rnd.uniform(b_min, b_max)
+    f = width_at(points, a, b)
+    evaluations += 1
+    step = HC_START_STEP * size
 
-    for _ in range(max_iter):
-        # 8 szomszéd, a irányokat véletlenül elforgatva (hogy ne csak a
-        # tengelyek mentén lépjünk)
-        rot = rng.uniform(0.0, np.pi / 4)
-        dirs = np.column_stack((np.cos(angles + rot), np.sin(angles + rot)))
-        neighbors = np.clip(x + step * dirs, lo, hi)
-        f_neighbors = objective(neighbors)
-        j = int(np.argmin(f_neighbors))
-        if f_neighbors[j] < fx:
-            x, fx = neighbors[j], f_neighbors[j]
+    # az eddigi legjobb állapot (az újraindítások miatt kell külön tárolni)
+    best_a, best_b, best_f = a, b, f
+
+    for iteration in range(max_iter):
+        # 3) s összes szomszédja közül a legjobb
+        neighbor_a, neighbor_b, neighbor_f = a, b, math.inf
+        for dx, dy in DIRECTIONS:
+            new_a = clamp(a + step * dx, a_min, a_max)
+            new_b = clamp(b + step * dy, b_min, b_max)
+            new_f = width_at(points, new_a, new_b)
+            evaluations += 1
+            if new_f < neighbor_f:
+                neighbor_a, neighbor_b, neighbor_f = new_a, new_b, new_f
+
+        if neighbor_f < f:
+            # a legjobb szomszéd jobb: odalépünk
+            a, b, f = neighbor_a, neighbor_b, neighbor_f
         else:
-            step /= 2.0
-        if fx < best_f:
-            best_x, best_f = x.copy(), fx
-        if step < min_step * size:
-            # elakadtunk: újraindítás véletlen pontból
-            restarts += 1
-            x = rng.uniform(lo, hi)
-            fx = objective(x)
-            step = step0 * size
-            if fx < best_f:
-                best_x, best_f = x.copy(), fx
-        history.append(best_f)
-        history_evals.append(objective.evaluations)
+            # egyik szomszéd sem jobb: közelebbi szomszédokat nézünk
+            step = step / 2
+            if step < HC_MIN_STEP * size:
+                # lokális optimumon vagyunk: véletlen újraindítás
+                a = rnd.uniform(a_min, a_max)
+                b = rnd.uniform(b_min, b_max)
+                f = width_at(points, a, b)
+                evaluations += 1
+                step = HC_START_STEP * size
 
-    return _finish("Hegymászó (újraindítással)", points, best_x, objective,
-                   history, history_evals, t0, seed, {"restarts": restarts})
+        if f < best_f:
+            best_a, best_b, best_f = a, b, f
+
+    return make_result("Hegymászó (újraindítással)", points, best_a, best_b,
+                       evaluations, start_time)
 
 
 # --- 3.2 Szimulált hűtés ---
-def simulated_annealing(points, max_iter=2000, seed=None, bounds=None,
-                        sigma0=0.1, sigma_end=1e-9, temp_end_ratio=1e-6):
-    """Szimulált hűtés.
+SA_START_STEP = 0.1     # a kezdő lépésköz a tartomány méretéhez képest
+SA_END_STEP = 1e-9      # a lépésköz a futás végén (a tartományhoz képest)
+SA_END_RATIO = 1e-6     # a végső hőmérséklet a kezdőnek ekkora része
 
-    Egy iteráció = egy jelölt kipróbálása (1 kiértékelés / iteráció):
-    a jelenlegi pontot normál eloszlású véletlen lépéssel elmozdítjuk.
-    A jobb jelöltet mindig elfogadjuk, a rosszabbat exp(-Δ / T)
-    valószínűséggel.
-    A hőmérséklet (T) és a lépésköz (sigma) is csökken a keresés során
-    (p = a futás előrehaladása 0-tól 1-ig):
-        T     = T0 * temp_end_ratio ** p,      T0 = a kezdőpont célértéke / 10
-        sigma = méret * sigma0 * (sigma_end / sigma0) ** (p ** 2)
-    A lépésköz a p² miatt eleinte lassan, a végén gyorsan csökken: így a
-    keresésnek van ideje kijutni a célfüggvény lapos részeiről (ha a
-    középpont a ponthalmazon kívül van, a szélesség közel állandó), a végén
-    pedig finoman pontosít.
-    Mivel az ütemezés a max_iter-hez igazodik, egy rövidebb futás nem
-    egyszerűen egy hosszabb futás eleje.
+
+def simulated_annealing(points, max_iter=2000, seed=None, bounds=None):
+    """Szimulált hűtés (4. előadás, 51-53. dia).
+
+    1) Legyen s egy véletlenül választott kezdeti megoldás.
+    2) Ha a leállási feltétel teljesül (elfogyott a max_iter), állj le.
+    3) Állítsd elő s egy véletlen s' szomszédját;
+       ha s' jobb (vagy ugyanolyan), akkor legyen s = s';
+       egyébként exp(-(f(s') - f(s)) / T) valószínűséggel legyen s = s';
+       csökkentsd a T hőmérsékletet.
+    Hűtési ütemterv: T minden lépésben ugyanannyiszorosára csökken, úgy, hogy
+    a futás végére a kezdőérték SA_END_RATIO-szorosa legyen.
+    A szomszéd távolsága (a lépésköz) is csökken: eleinte lassan, a futás
+    végén gyorsan. Így a keresésnek van ideje nagy lépésekkel kijutni a
+    célfüggvény lapos részeiről (ha a középpont a ponthalmazon kívül van, a
+    szélesség majdnem állandó), a végén pedig finoman pontosít.
+    Egy iteráció = egy szomszéd kipróbálása (1 kiértékelés).
     """
-    
-    max_iter = _check_iter(max_iter)
-    t0 = time.perf_counter()
-    points, objective, lo, hi, size, rng = _prepare(points, bounds, seed)
+    start_time = time.perf_counter()
+    points, (a_min, a_max, b_min, b_max) = prepare(points, max_iter, bounds)
+    rnd = random.Random(seed)
+    size = a_max - a_min
+    evaluations = 0
 
-    x = rng.uniform(lo, hi)
-    fx = objective(x)
-    best_x, best_f = x.copy(), fx
-    temp0 = max(fx / 10.0, 1e-12 * size)
-    accepted = 0
-    history, history_evals = [], []
+    # 1) véletlen kezdeti megoldás
+    a = rnd.uniform(a_min, a_max)
+    b = rnd.uniform(b_min, b_max)
+    f = width_at(points, a, b)
+    evaluations += 1
+    best_a, best_b, best_f = a, b, f
 
-    for k in range(max_iter):
-        progress = k / max(max_iter - 1, 1)          # 0 -> 1
-        temp = temp0 * temp_end_ratio ** progress
-        sigma = size * sigma0 * (sigma_end / sigma0) ** (progress ** 2)
+    # a kezdő hőmérséklet a kezdőállapot szélességének tizede, és minden
+    # lépésben `cooling`-szorosára csökken
+    start_temperature = max(f / 10, 1e-12)
+    temperature = start_temperature
+    cooling = SA_END_RATIO ** (1 / max_iter)
 
-        candidate = np.clip(x + rng.normal(0.0, sigma, size=2), lo, hi)
-        f_candidate = objective(candidate)
-        delta = f_candidate - fx
-        if delta <= 0 or rng.random() < math.exp(-delta / temp):
-            x, fx = candidate, f_candidate
-            accepted += 1
-            if fx < best_f:
-                best_x, best_f = x.copy(), fx
-        history.append(best_f)
-        history_evals.append(objective.evaluations)
+    for iteration in range(max_iter):
+        # a lépésköz: a progress (0 -> 1) négyzete miatt eleinte lassan,
+        # a végén gyorsan csökken SA_START_STEP-ről SA_END_STEP-re
+        progress = iteration / max_iter
+        step = size * SA_START_STEP * \
+            (SA_END_STEP / SA_START_STEP) ** (progress ** 2)
 
-    return _finish("Szimulált hűtés", points, best_x, objective, history,
-                   history_evals, t0, seed, {"accepted": accepted})
+        # 3) egy véletlen szomszéd: normál eloszlású elmozdulás
+        new_a = clamp(a + rnd.gauss(0, step), a_min, a_max)
+        new_b = clamp(b + rnd.gauss(0, step), b_min, b_max)
+        new_f = width_at(points, new_a, new_b)
+        evaluations += 1
+
+        if new_f <= f:
+            # jobb (vagy ugyanolyan): elfogadjuk
+            a, b, f = new_a, new_b, new_f
+        else:
+            # rosszabb: csak bizonyos valószínűséggel fogadjuk el
+            probability = math.exp(-(new_f - f) / temperature)
+            if rnd.random() < probability:
+                a, b, f = new_a, new_b, new_f
+
+        if f < best_f:
+            best_a, best_b, best_f = a, b, f
+
+        # a hőmérséklet csökkentése
+        temperature = temperature * cooling
+
+    return make_result("Szimulált hűtés", points, best_a, best_b, evaluations,
+                       start_time)
 
 
-# --- 3.3 Genetikus algoritmus (valós kódolás) ---
-def genetic_algorithm(points, max_iter=200, seed=None, bounds=None,
-                      pop_size=40, elite=2, tournament=3, crossover_rate=0.9,
-                      mutation_rate=0.3, alpha=0.5):
-    """Genetikus algoritmus valós kódolással.
+# --- 3.3 Genetikus algoritmus ---
+GA_POPULATION = 40       # a populáció mérete (az előadás példájában 30-50)
+GA_CROSSOVER_RATE = 0.8  # ekkora eséllyel keresztezünk (különben másolat)
+GA_MUTATION_RATE = 0.3   # ekkora eséllyel mutálódik egy gyermek
+GA_START_MUTATION = 0.1  # a mutáció kezdeti mérete a tartományhoz képest
+GA_END_MUTATION = 1e-7   # a mutáció mérete a futás végén (a tartományhoz képest)
 
-    Egyed = egy középpont (a, b); a rátermettség a célérték (kisebb a jobb).
-    Egy iteráció = egy generáció (pop_size kiértékelés / iteráció, plusz
-    pop_size a kezdőpopulációra).
-      - szelekció:      versengéses (tournament) kiválasztás
-      - kereszteződés:  BLX-alfa (a gyermek a két szülő által kijelölt,
-                        alfa-val kibővített téglalapból véletlen pont)
-      - mutáció:        normál eloszlású elmozdítás, amelynek mérete a
-                        generációk során lineárisan csökken
-      - elitizmus:      a legjobb `elite` egyed változatlanul továbbjut
+
+def genetic_algorithm(points, max_iter=200, seed=None, bounds=None):
+    """Genetikus algoritmus (4. előadás, 60-66. dia).
+
+    Egyed = egy középpont (a, b), a "génjei" az a és a b koordináta.
+    Rátermettség: a gyűrű szélessége (a kisebb a jobb).
+    1) Töltsd fel a kezdeti populációt véletlen egyedekkel.
+    2) Ha a leállási feltétel teljesül (elfogyott a max_iter), állj le,
+       és add vissza a legjobb egyedet.
+    3) Egyébként válassz ki szülőket a populációból (szelekció);
+       alkalmazd rájuk a genetikus műveleteket (kereszteződés, mutáció);
+       értékeld ki az új egyedeket;
+       dobd el a legrosszabb egyedeket (a régi és az új egyedek közül a
+       legjobb GA_POPULATION darab marad meg);
+       menj vissza 2)-re.
+    Egy iteráció = egy generáció (GA_POPULATION kiértékelés).
     """
-    
-    max_iter = _check_iter(max_iter)
-    t0 = time.perf_counter()
-    points, objective, lo, hi, size, rng = _prepare(points, bounds, seed)
+    start_time = time.perf_counter()
+    points, (a_min, a_max, b_min, b_max) = prepare(points, max_iter, bounds)
+    rnd = random.Random(seed)
+    size = a_max - a_min
+    evaluations = 0
 
-    pop = rng.uniform(lo, hi, size=(pop_size, 2))
-    fit = objective(pop)
-    n_children = pop_size - elite
-    history, history_evals = [], []
+    # 1) kezdeti populáció: minden egyed egy [a, b, szélesség] lista
+    population = []
+    for i in range(GA_POPULATION):
+        a = rnd.uniform(a_min, a_max)
+        b = rnd.uniform(b_min, b_max)
+        population.append([a, b, width_at(points, a, b)])
+        evaluations += 1
 
-    for gen in range(max_iter):
-        order = np.argsort(fit)
-        elites = pop[order[:elite]]
+    for generation in range(max_iter):
+        # a mutáció mérete generációról generációra csökken
+        progress = generation / max_iter
+        mutation_size = size * GA_START_MUTATION * \
+            (GA_END_MUTATION / GA_START_MUTATION) ** progress
 
-        # szelekció: minden szülőhelyre `tournament` véletlen egyed közül
-        # a legjobb
-        contestants = rng.integers(0, pop_size, size=(n_children, 2, tournament))
-        winners = np.take_along_axis(
-            contestants, np.argmin(fit[contestants], axis=2)[..., None], axis=2)[..., 0]
-        p1, p2 = pop[winners[:, 0]], pop[winners[:, 1]]
+        children = []
+        while len(children) < GA_POPULATION:
+            # 3) szelekció: két-két véletlen egyed közül a jobbik lesz a
+            # szülő (a rátermettebb nagyobb eséllyel, de nem biztosan)
+            parent1 = select_parent(population, rnd)
+            parent2 = select_parent(population, rnd)
 
-        # kereszteződés (BLX-alfa); ahol nincs kereszteződés, az első szülő
-        # másolata a gyermek
-        low, high = np.minimum(p1, p2), np.maximum(p1, p2)
-        span = high - low
-        children = rng.uniform(low - alpha * span, high + alpha * span)
-        no_cross = rng.random(n_children) >= crossover_rate
-        children[no_cross] = p1[no_cross]
+            # kereszteződés: az a koordinátát az egyik, a b-t a másik
+            # szülőtől örökli a gyermek
+            if rnd.random() < GA_CROSSOVER_RATE:
+                child_a, child_b = parent1[0], parent2[1]
+            else:
+                child_a, child_b = parent1[0], parent1[1]
 
-        # mutáció
-        sigma = size * (0.1 * (1.0 - gen / max_iter) + 1e-6)
-        mutate = rng.random(n_children) < mutation_rate
-        children[mutate] += rng.normal(0.0, sigma, size=(int(mutate.sum()), 2))
-        children = np.clip(children, lo, hi)
+            # mutáció: kis véletlen elmozdítás
+            if rnd.random() < GA_MUTATION_RATE:
+                child_a = child_a + rnd.gauss(0, mutation_size)
+                child_b = child_b + rnd.gauss(0, mutation_size)
+            child_a = clamp(child_a, a_min, a_max)
+            child_b = clamp(child_b, b_min, b_max)
 
-        # új populáció: elitek + gyermekek
-        pop = np.vstack((elites, children))
-        fit = np.concatenate((fit[order[:elite]], objective(children)))
-        history.append(float(fit.min()))
-        history_evals.append(objective.evaluations)
+            # az új egyed kiértékelése
+            children.append([child_a, child_b,
+                             width_at(points, child_a, child_b)])
+            evaluations += 1
 
-    best = int(np.argmin(fit))
-    return _finish("Genetikus algoritmus", points, pop[best], objective,
-                   history, history_evals, t0, seed)
+        # a legrosszabbak eldobása: szélesség szerint sorba rendezzük a régi
+        # és az új egyedeket, és csak a legjobbak maradnak
+        everyone = population + children
+        everyone.sort(key=lambda individual: individual[2])
+        population = everyone[:GA_POPULATION]
+
+    best = population[0]          # a sorba rendezés miatt az első a legjobb
+    return make_result("Genetikus algoritmus", points, best[0], best[1],
+                       evaluations, start_time)
+
+
+def select_parent(population, rnd):
+    """Szelekció versengéssel: két véletlen egyed közül a jobbik (a kisebb
+    szélességű) lesz a szülő."""
+    first = rnd.choice(population)
+    second = rnd.choice(population)
+    if first[2] < second[2]:
+        return first
+    return second
 
 
 # --- 3.4 Részecskeraj-optimalizálás (PSO) ---
-def particle_swarm(points, max_iter=200, seed=None, bounds=None,
-                   swarm_size=30, w_start=0.9, w_end=0.4, c1=1.5, c2=1.5,
-                   v_max=0.2):
-    """Részecskeraj-optimalizálás (PSO).
+PSO_SWARM = 30      # a részecskék száma
+PSO_INERTIA = 0.7   # w: mennyire tartja meg a részecske az előző sebességét
+PSO_C1 = 1.5        # c1: mennyire húz a részecske saját legjobb helye felé
+PSO_C2 = 1.5        # c2: mennyire húz a raj legjobb helye felé
 
-    Minden részecske egy középpont, sebességgel. Egy iteráció = a raj egy
-    lépése (swarm_size kiértékelés / iteráció, plusz swarm_size a
-    kezdéshez):
-        v = w*v + c1*r1*(saját legjobb - x) + c2*r2*(raj legjobbja - x)
-        x = x + v
-    A tehetetlenségi súly (w) lineárisan csökken w_start-ról w_end-re, a
-    sebesség nagysága legfeljebb v_max * tartományméret.
+
+def particle_swarm(points, max_iter=200, seed=None, bounds=None):
+    """Részecskeraj-optimalizálás, PSO (5. előadás, 22-23. dia).
+
+    Minden részecskének van helye (x = egy középpont), sebessége (v),
+    és megjegyzi a saját eddigi legjobb helyét (p). A raj az összes
+    részecske legjobb helyét is ismeri (g).
+    1) A részecskék véletlen helyről, kis véletlen sebességgel indulnak.
+    2) Ha a leállási feltétel teljesül (elfogyott a max_iter), állj le, és
+       add vissza g-t.
+    3) Egyébként minden részecskére:
+           v = w*v + c1*r1*(p - x) + c2*r2*(g - x)    (r1, r2 véletlen 0-1)
+           x = x + v
+       értékeld ki az új helyet; ha jobb, mint p, legyen p = x;
+       ha jobb, mint g, legyen g = x;
+       menj vissza 2)-re.
+    Egy iteráció = a raj egy lépése (PSO_SWARM kiértékelés).
     """
-    max_iter = _check_iter(max_iter)
-    t0 = time.perf_counter()
-    points, objective, lo, hi, size, rng = _prepare(points, bounds, seed)
+    start_time = time.perf_counter()
+    points, (a_min, a_max, b_min, b_max) = prepare(points, max_iter, bounds)
+    rnd = random.Random(seed)
+    size = a_max - a_min
+    evaluations = 0
 
-    vmax = v_max * size
-    x = rng.uniform(lo, hi, size=(swarm_size, 2))
-    v = rng.uniform(-vmax, vmax, size=(swarm_size, 2)) * 0.1
-    f = objective(x)
-    pbest, pbest_f = x.copy(), f.copy()
-    g = int(np.argmin(pbest_f))
-    history, history_evals = [], []
+    # 1) a pontok kezdeti helye és sebessége
+    positions = []        # [a, b]
+    velocities = []       # [va, vb]
+    own_best = []         # [a, b, szélesség]: a részecske eddigi legjobbja
+    for i in range(PSO_SWARM):
+        a = rnd.uniform(a_min, a_max)
+        b = rnd.uniform(b_min, b_max)
+        f = width_at(points, a, b)
+        evaluations += 1
+        positions.append([a, b])
+        velocities.append([rnd.uniform(-0.01, 0.01) * size,
+                           rnd.uniform(-0.01, 0.01) * size])
+        own_best.append([a, b, f])
 
-    for k in range(max_iter):
-        w = w_start + (w_end - w_start) * k / max(max_iter - 1, 1)
-        r1 = rng.random((swarm_size, 2))
-        r2 = rng.random((swarm_size, 2))
-        v = w * v + c1 * r1 * (pbest - x) + c2 * r2 * (pbest[g] - x)
-        v = np.clip(v, -vmax, vmax)
-        x = np.clip(x + v, lo, hi)
-        f = objective(x)
-        better = f < pbest_f
-        pbest[better], pbest_f[better] = x[better], f[better]
-        g = int(np.argmin(pbest_f))
-        history.append(float(pbest_f[g]))
-        history_evals.append(objective.evaluations)
+    # a raj legjobbja (g)
+    swarm_best = min(own_best, key=lambda p: p[2])[:]
 
-    return _finish("Részecskeraj (PSO)", points, pbest[g], objective, history,
-                   history_evals, t0, seed)
+    for iteration in range(max_iter):
+        for i in range(PSO_SWARM):
+            # 3) az új sebesség és hely, koordinátánként
+            for d in range(2):                # d = 0: a, d = 1: b
+                r1 = rnd.random()
+                r2 = rnd.random()
+                velocities[i][d] = (PSO_INERTIA * velocities[i][d]
+                                    + PSO_C1 * r1 * (own_best[i][d] - positions[i][d])
+                                    + PSO_C2 * r2 * (swarm_best[d] - positions[i][d]))
+                positions[i][d] = positions[i][d] + velocities[i][d]
+            positions[i][0] = clamp(positions[i][0], a_min, a_max)
+            positions[i][1] = clamp(positions[i][1], b_min, b_max)
+
+            # az új hely kiértékelése
+            a, b = positions[i]
+            f = width_at(points, a, b)
+            evaluations += 1
+
+            # a saját és a raj legjobbjának frissítése
+            if f < own_best[i][2]:
+                own_best[i] = [a, b, f]
+                if f < swarm_best[2]:
+                    swarm_best = [a, b, f]
+
+    return make_result("Részecskeraj (PSO)", points, swarm_best[0],
+                       swarm_best[1], evaluations, start_time)
 
 
 # --- 3.5 A módszerek listája ---
@@ -393,4 +447,7 @@ def fit_all(points, max_iter, seed=1, bounds=None):
     Visszatérés: FitResult-ok listája a SEARCH_METHODS sorrendjében."""
     if bounds is None:
         bounds = default_bounds(points)
-    return [method(points, max_iter, seed, bounds) for method in SEARCH_METHODS]
+    results = []
+    for method in SEARCH_METHODS:
+        results.append(method(points, max_iter, seed, bounds))
+    return results

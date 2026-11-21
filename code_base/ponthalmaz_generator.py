@@ -242,11 +242,15 @@ def generate_points(n, radius=100.0, center=(0.0, 0.0), *,
         raise ValueError("A véletlen hiba mértéke (±e) nem lehet negatív.")
 
     outlier_fraction = _check_number(outlier_fraction, "A kiugró pontok aránya")
+    
     if not 0 <= outlier_fraction <= 1:
         raise ValueError("A kiugró pontok aránya 0 és 1 (0% és 100%) között legyen.")
+    
     if outlier_distance is None:
         outlier_distance = max(0.2 * radius, 5.0 * noise_level)
+    
     outlier_distance = _check_number(outlier_distance, "A kiugró pontok távolsága")
+    
     if outlier_distance <= 0:
         raise ValueError("A kiugró pontok távolsága pozitív legyen.")
 
@@ -263,13 +267,17 @@ def generate_points(n, radius=100.0, center=(0.0, 0.0), *,
             c_start, c_end = cluster_range
         except (TypeError, ValueError):   # pl. nem két elemű a megadott érték
             raise ValueError(missing_range)
+        
         c_start = _check_number(c_start, "A sűrítés kezdőszöge")
         c_end = _check_number(c_end, "A sűrítés végszöge")
         cluster_span = _arc_span(c_start, c_end)
+        
         if cluster_span == 0:
             raise ValueError("A sűrítés kezdő- és végszöge nem lehet ugyanaz.")
+        
         # a sűrítés tartománya az ív kezdetéhez képest
         cluster_offset = (c_start - arc_start) % 360.0
+        
         if not full_circle and cluster_offset + cluster_span > span + 1e-9:
             raise ValueError("A sűrítés szögtartománya az íven belül legyen.")
         cluster_range = (c_start, c_end)

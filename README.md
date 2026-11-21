@@ -55,12 +55,14 @@ A **„Vizsgálat indítása”** gomb bezárja (elrejti) a generátorablakot, �
 
 **A négy keresőmódszer** (felületük: `f(points, max_iter, seed, bounds=None) -> FitResult`):
 
-| Módszer | Egy iteráció | Kiértékelés / iteráció |
-|---|---|---|
-| Hegymászó véletlen újraindítással | egy lépés a 8 szomszéd legjobbjára | 8 |
-| Szimulált hűtés | egy jelölt kipróbálása | 1 |
-| Genetikus algoritmus (valós kódolás) | egy generáció | 40 |
-| Részecskeraj-optimalizálás (PSO) | a raj egy lépése | 30 |
+| Módszer | Egy iteráció | Kiértékelés / iteráció | Előadás |
+|---|---|---|---|
+| Hegymászó véletlen újraindítással | a 8 szomszéd megvizsgálása, lépés a legjobbra | 8 | Keresés II., 45. és 50. dia |
+| Szimulált hűtés | egy véletlen szomszéd kipróbálása | 1 | Keresés II., 51–53. dia |
+| Genetikus algoritmus | egy generáció (szelekció, kereszteződés, mutáció, a legrosszabbak eldobása) | 40 | Keresés II., 60–66. dia |
+| Részecskeraj-optimalizálás (PSO) | a raj egy lépése | 30 | Keresés III., 22–23. dia |
+
+A módszerek az előadásokban megadott lépéseket követik, egyszerű ciklusokkal megírva (a lépések számozása a kódban is az előadásét követi). Mivel itt minimalizálunk, az előadás „f(s′) ≥ f(s)” feltétele „f(s′) < f(s)” lesz. A leállási feltétel az iterációk száma, mert a legkisebb szélességet előre nem ismerjük.
 
 Mivel egy iteráció módszerenként más munka, a táblázat a célfüggvény-kiértékelések számát is mutatja. A `fit_all(points, max_iter, seed)` mind a négy módszert lefuttatja ugyanarra a ponthalmazra, ugyanazzal a max_iter értékkel és seeddel. A keresési tartomány a ponthalmaz befoglaló téglalapjának közepe körüli négyzet, amelynek oldala a hosszabbik oldal kétszerese.
 
