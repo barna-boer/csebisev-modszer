@@ -1,7 +1,7 @@
 """
 Körillesztés Csebisev elve szerint, keresőmódszerekkel.
 
-A feladat: adott ponthalmazhoz keressük azt a két koncentrikus kört, amelyek
+Adott ponthalmazhoz keressük azt a két koncentrikus kört, amelyek
 közé minden pont befér, és a sugaraik különbsége (a gyűrű szélessége)
 minimális. Egy (a, b) középpont esetén
     r = a pontok legkisebb távolsága a középponttól   (belső kör)
@@ -9,7 +9,7 @@ minimális. Egy (a, b) középpont esetén
     célfüggvény: f(a, b) = R - r                       (ezt minimalizáljuk)
 Egy állapot tehát egy (a, b) középpont, a keresés a síkon zajlik.
 
-A négy keresőmódszer az előadások (Keresés II-III.) lépéseit követi:
+A négy keresőmódszer az előadások lépései alapján implementálva:
   - hegymászó algoritmus véletlen újraindítással (4. előadás, 45. és 50. dia)
   - szimulált hűtés (4. előadás, 51-53. dia)
   - genetikus algoritmus (4. előadás, 60-66. dia)
@@ -31,34 +31,35 @@ import numpy as np
 
 
 # ===========================================================================
-# 1. Célfüggvény és eredmény
+#region 1. Célfüggvény és eredmény
 # ===========================================================================
 def width_at(points, a, b):
     """A célfüggvény: az (a, b) középpontú gyűrű szélessége, R - r.
-
     A távolságokat a numpy egyszerre számolja ki az összes pontra."""
+    
     distances = np.hypot(points[:, 0] - a, points[:, 1] - b)
     return float(distances.max() - distances.min())
 
-
 def ring(points, center):
     """Egy középponthoz tartozó gyűrű: (r, R, R - r)."""
+    
     points = np.asarray(points, dtype=float)
     distances = np.hypot(points[:, 0] - center[0], points[:, 1] - center[1])
     r = float(distances.min())
     big_r = float(distances.max())
     return r, big_r, big_r - r
 
-
 class FitResult:
     """Egy keresés eredménye."""
 
     def __init__(self, method, center, r_inner, r_outer, width, evaluations,
                  time_s):
-        """method: a módszer neve; center: a talált középpont (a, b);
+        """method: a módszer neve; 
+        center: a talált középpont (a, b);
         r_inner, r_outer: a belső és a külső kör sugara; width: R - r;
         evaluations: a célfüggvény-kiértékelések száma;
         time_s: a futásidő másodpercben."""
+
         self.method = method
         self.center = center
         self.r_inner = r_inner
@@ -70,20 +71,23 @@ class FitResult:
 
 def make_result(method, points, a, b, evaluations, start_time):
     """A keresés végén összeállítja az eredményt a legjobb középpontból."""
+    
     r, big_r, width = ring(points, (a, b))
     time_s = time.perf_counter() - start_time
     return FitResult(method, (float(a), float(b)), r, big_r, width,
                      evaluations, time_s)
 
+#endregion
 
 # ===========================================================================
-# 2. Közös segédfüggvények
+#region 2. Közös segédfüggvények
 # ===========================================================================
 def default_bounds(points, scale=2.0):
-    """A keresési tartomány: egy négyzet a ponthalmaz közepe körül, amelynek
+    """A keresési tartomány: 
+    egy négyzet a ponthalmaz közepe körül, amelynek
     oldala a ponthalmaz szélességének (vagy magasságának) `scale`-szerese.
-
     Visszatérés: (a_min, a_max, b_min, b_max)."""
+    
     points = np.asarray(points, dtype=float)
     x_min, x_max = points[:, 0].min(), points[:, 0].max()
     y_min, y_max = points[:, 1].min(), points[:, 1].max()
@@ -93,15 +97,15 @@ def default_bounds(points, scale=2.0):
     return (float(middle_x - half), float(middle_x + half),
             float(middle_y - half), float(middle_y + half))
 
-
 def clamp(value, low, high):
     """A value értéket a [low, high] tartományba szorítja."""
-    return max(low, min(value, high))
 
+    return max(low, min(value, high))
 
 def prepare(points, max_iter, bounds):
     """A módszerek közös előkészítése: ellenőrzi a bemenetet, és visszaadja
-    a pontokat numpy tömbként meg a keresési tartományt."""
+    a pontokat numpy tömbként + a keresési tartományt."""
+    
     points = np.asarray(points, dtype=float)
     if points.ndim != 2 or points.shape[1] != 2 or len(points) == 0:
         raise ValueError("A pontok (n, 2) alakú, nem üres tömbben legyenek.")
@@ -111,30 +115,34 @@ def prepare(points, max_iter, bounds):
         bounds = default_bounds(points)
     return points, bounds
 
+#endregion
 
 # ===========================================================================
-# 3. Keresőmódszerek
-#
-# Mindegyik felülete: f(points, max_iter, seed, bounds=None) -> FitResult
+#region 3. Keresőmódszerek
+
+# Mindegyik felülete: f(points, max_iter, seed, bounds = None) -> FitResult
 # A seed a véletlenszám-generátor kezdőértéke: ugyanazzal a seeddel mindig
 # ugyanaz az eredmény jön ki.
-# Egy "iteráció" módszerenként mást jelent, ezért a célfüggvény-
-# kiértékeléseket is számoljuk: a módszerek összehasonlításához ez a jobb.
+# Egy "iteráció" módszerenként eltér, ezért a 
+# célfüggvény- kiértékeléseket is számoljuk a módszerek összehasonlításához
 # ===========================================================================
 
 # -------------------------------------------------------------------------
-# 3.1 Hegymászó algoritmus véletlen újraindítással
+#region 3.1 Hegymászó algoritmus véletlen újraindítással
 # -------------------------------------------------------------------------
 # a 8 szomszéd iránya: fel, le, jobbra, balra és a 4 átló
+
+DIAG = math.sqrt(2) / 2     #(= cos 45°  ≈ 0.7071)
 DIRECTIONS = [(1, 0), (-1, 0), (0, 1), (0, -1),
-              (0.7071, 0.7071), (0.7071, -0.7071),
-              (-0.7071, 0.7071), (-0.7071, -0.7071)]
+              (DIAG, DIAG), (DIAG, -DIAG),
+              (-DIAG, DIAG), (-DIAG, -DIAG)]
+
 HC_START_STEP = 0.1    # a kezdő lépésköz a tartomány méretéhez képest
 HC_MIN_STEP = 1e-10    # ennél kisebb lépésköznél lokális optimumon vagyunk
 
 
 def hill_climbing(points, max_iter=200, seed=None, bounds=None):
-    """Hegymászó algoritmus véletlen újraindítással (4. előadás, 45. és 50. dia).
+    """Hegymászó algoritmus véletlen újraindítással.
 
     1) Legyen s egy véletlen kezdeti állapot.
     2) Ha a leállási feltétel teljesül (elfogyott a max_iter), állj le.
@@ -158,7 +166,7 @@ def hill_climbing(points, max_iter=200, seed=None, bounds=None):
     evaluations += 1
     step = HC_START_STEP * size
 
-    # az eddigi legjobb állapot (az újraindítások miatt kell külön tárolni)
+    # az eddigi legjobb állapot (újraindítások miatt kell külön tárolni)
     best_a, best_b, best_f = a, b, f
 
     # 2) leállási feltétel: max_iter iteráció után vége a keresésnek;
@@ -194,10 +202,10 @@ def hill_climbing(points, max_iter=200, seed=None, bounds=None):
     # az eredmény: a keresés során talált legjobb állapot
     return make_result("Hegymászó (újraindítással)", points, best_a, best_b,
                        evaluations, start_time)
-
+#endregion
 
 # -------------------------------------------------------------------------
-# 3.2 Szimulált hűtés
+#region 3.2 Szimulált hűtés
 # -------------------------------------------------------------------------
 SA_START_STEP = 0.1     # a kezdő lépésköz a tartomány méretéhez képest
 SA_END_STEP = 1e-9      # a lépésköz a futás végén (a tartományhoz képest)
@@ -213,6 +221,7 @@ def simulated_annealing(points, max_iter=2000, seed=None, bounds=None):
        ha s' jobb (vagy ugyanolyan), akkor legyen s = s';
        egyébként exp(-(f(s') - f(s)) / T) valószínűséggel legyen s = s';
        csökkentsd a T hőmérsékletet.
+    
     Hűtési ütemterv: T minden lépésben ugyanannyiszorosára csökken, úgy, hogy
     a futás végére a kezdőérték SA_END_RATIO-szorosa legyen.
     A szomszéd távolsága (a lépésköz) is csökken: eleinte lassan, a futás
@@ -234,8 +243,8 @@ def simulated_annealing(points, max_iter=2000, seed=None, bounds=None):
     evaluations += 1
     best_a, best_b, best_f = a, b, f
 
-    # a kezdő hőmérséklet a kezdőállapot szélességének tizede, és minden
-    # lépésben `cooling`-szorosára csökken
+    # a kezdő hőmérséklet a kezdőállapot szélességének tizede,
+    # minden lépésben `cooling`-szorosára csökken
     start_temperature = max(f / 10, 1e-12)
     temperature = start_temperature
     cooling = SA_END_RATIO ** (1 / max_iter)
@@ -273,10 +282,10 @@ def simulated_annealing(points, max_iter=2000, seed=None, bounds=None):
     # az eredmény: a keresés során talált legjobb állapot
     return make_result("Szimulált hűtés", points, best_a, best_b, evaluations,
                        start_time)
-
+#endregion
 
 # -------------------------------------------------------------------------
-# 3.3 Genetikus algoritmus
+#region 3.3 Genetikus algoritmus
 # -------------------------------------------------------------------------
 GA_POPULATION = 40       # a populáció mérete (az előadás példájában 30-50)
 GA_CROSSOVER_RATE = 0.8  # ekkora eséllyel keresztezünk (különben másolat)
@@ -381,10 +390,11 @@ def select_parent(population, rnd):
     if first_f < second_f:
         return first_a, first_b, first_f
     return second_a, second_b, second_f
-
+    
+#endregion
 
 # -------------------------------------------------------------------------
-# 3.4 Részecskeraj-optimalizálás (PSO)
+#region 3.4 Részecskeraj-optimalizálás (PSO)
 # -------------------------------------------------------------------------
 PSO_SWARM = 30      # a részecskék száma
 PSO_INERTIA = 0.7   # w: mennyire tartja meg a részecske az előző sebességét
@@ -473,33 +483,36 @@ def particle_swarm(points, max_iter=200, seed=None, bounds=None):
             # ha jobb, mint a raj legjobbja (g), az lesz az új g
             if f < own_best_f[i]:
                 own_best_a[i], own_best_b[i], own_best_f[i] = a, b, f
+                
                 if f < swarm_best_f:
                     swarm_best_a, swarm_best_b, swarm_best_f = a, b, f
 
     # az eredmény: a keresés során talált legjobb állapot
     return make_result("Részecskeraj (PSO)", points, swarm_best_a,
                        swarm_best_b, evaluations, start_time)
+#endregion
 
-
-# -------------------------------------------------------------------------
-# 3.5 A módszerek listája
-# -------------------------------------------------------------------------
+# --- A módszerek listája ---
 # ebben a sorrendben futnak és jelennek meg a táblázatban
 SEARCH_METHODS = [hill_climbing, simulated_annealing, genetic_algorithm,
                   particle_swarm]
 
+#endregion
 
 # ===========================================================================
-# 4. Mind a négy módszer egy ponthalmazon
+#region 4. Négy módszer megjelenítése egy ponthalmazon
 # ===========================================================================
 def fit_all(points, max_iter, seed=1, bounds=None):
     """A négy keresőmódszer lefuttatása ugyanarra a ponthalmazra, ugyanazzal
     a max_iter értékkel és seeddel. A módszerek egymás után futnak, hogy a
     futásidejük mérése ne zavarja egymást.
     Visszatérés: FitResult-ok listája a SEARCH_METHODS sorrendjében."""
+    
     if bounds is None:
         bounds = default_bounds(points)
     results = []
     for method in SEARCH_METHODS:
         results.append(method(points, max_iter, seed, bounds))
     return results
+
+#endregion
