@@ -42,7 +42,7 @@ A parancsokat a projekt gyökeréből kell kiadni (ott van a `main.py`).
 2. **Lefedettség:** teljes kör vagy ívdarab (kezdő- és végszög fokban, a 0°-on át is), a szögek véletlenek vagy egyenletes közűek.
 3. **Alakhiba:** nincs / ellipszis (b/a arány; a nagytengely az x tengely mentén) / szabályos sokszög (oldalszám; a csúcsok a névleges körön, az első a 0°-os irányban).
 4. **Véletlen hiba:** sugárirányú, egyenletes eloszlású zaj a ±e tartományban (egyetlen paraméter: e; 0 = nincs zaj).
-5. **Egyéb hibák:** kiugró pontok (adott arányuk d..2d távolságra kerül a helyétől), egyenetlen pontsűrűség (csak a kódból állítható).
+5. **Egyéb hibák:** kiugró pontok (adott arányuk d..2d távolságra kerül a helyétől).
 6. **Reprodukálhatóság:** seed; ugyanazzal a seeddel mindig pontosan ugyanaz a ponthalmaz jön ki.
 
 Bármelyik mező módosításakor a ponthalmaz automatikusan újragenerálódik ugyanazzal a seeddel; az „Új véletlen halmaz” gomb új seedet sorsol. Minden hiba csak a pont sugárirányú távolságát változtatja, a szögét nem, így a pontok mindig a megadott íven belül maradnak.

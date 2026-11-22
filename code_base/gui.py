@@ -407,8 +407,6 @@ class App:
         text += f"Alakhiba: {shape_text}\n"
         text += f"Véletlen hiba: {noise_text}\n"
         text += f"Kiugró pontok: {ground_truth['outliers']['count']} db (piros)\n"
-        if ground_truth["density"]["cluster_count"] > 0:
-            text += f"Sűrített pontok: {ground_truth['density']['cluster_count']} db\n"
         text += f"Seed: {ground_truth['seed']}"
         return text
 
