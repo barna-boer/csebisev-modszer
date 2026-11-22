@@ -1,5 +1,5 @@
 """
-Grafikus felület a ponthalmaz-generátorhoz (Csebisev-elv).
+Grafikus felület a ponthalmaz-generátorhoz.
 
 A program egy egyszerű ablakban megjeleníti a generált pontokat.
 Megadható:
@@ -32,9 +32,8 @@ from tkinter import ttk
 from code_base.ponthalmaz_generator import (ANGLE_MODES, SHAPE_DEFAULTS,
                                             SHAPE_TYPES, generate_points)
 
-
 # ===========================================================================
-# 1. Beállítások
+#region Beállítások és segédfüggvények
 # ===========================================================================
 CANVAS_SIZE = 640          # a rajzterület kezdeti mérete képpontban
 VIEW_MARGIN = 15           # üres sáv a rajz széle körül (képpontban)
@@ -45,63 +44,59 @@ GUIDE_COLOR = "#aaaaaa"    # a névleges kör és a segédvonalak színe (szürk
 AUTO_DELAY_MS = 150        # módosítás után ennyi ezredmásodperc múlva generál
                            # újra (gépelés közben ne minden egyes leütésre)
 
-
-# ===========================================================================
-# 2. Segédfüggvények
-# ===========================================================================
 def new_seed():
     """Új véletlen seed az "Új véletlen halmaz" gombhoz."""
     return random.randrange(2**31 - 1)
 
-
 def read_float(text, name):
     """Egy mező szövegét valós számmá alakítja (tizedesvesszőt is elfogad).
     Hibás szövegnél ValueError, a hibaüzenetben a mező nevével (name)."""
+
     text = text.strip().replace(",", ".")
     try:
         return float(text)
     except ValueError:
         raise ValueError(f"{name}: szám kell.")
 
-
 def read_int(text, name):
     """Egy mező szövegét egész számmá alakítja.
     Hibás szövegnél ValueError, a hibaüzenetben a mező nevével (name)."""
+
     try:
         return int(text.strip())
     except ValueError:
         raise ValueError(f"{name}: egész szám kell.")
 
-
 def key_of_label(choices, label):
     """A legördülő listában látható magyar felirathoz tartozó kulcs
     (pl. "ellipszis" -> "ellipse"). A choices egy szótár: kulcs -> felirat."""
+
     for key in choices:
         if choices[key] == label:
             return key
     raise ValueError(f"Ismeretlen választás: {label}")
-
+#endregion
 
 # ===========================================================================
-# 3. A generátor ablaka
+#region A generátor ablaka
 # ===========================================================================
 class App:
     """A ponthalmaz-generátor ablaka.
 
-    Bal oldalon a generálás paraméterei (mezők, választók, gombok), jobb
-    oldalon a generált ponthalmaz rajza. Bármelyik mező módosításakor a
+    Bal oldalon a generálás paraméterei (mezők, választók, gombok), 
+    jobb oldalon a generált ponthalmaz rajza. Bármelyik mező módosításakor a
     ponthalmaz automatikusan újragenerálódik.
 
     Az osztály részei:
-      3.1 az ablak felépítése
-      3.2 a vezérlőpanel elemei (mezőcsoport, beviteli mező, legördülő lista)
-      3.3 események (mezők változása, gombok)
-      3.4 a ponthalmaz generálása és leírása
-      3.5 rajzolás
-      3.6 átméretezés"""
+      1. GUI felépítése
+      2. vezérlőpanel elemei (mezőcsoport, beviteli mező, legördülő lista)
+      3. események (mezők változása, gombok)
+      4. a ponthalmaz generálása és leírása
+      5. rajzolás
+      6. átméretezés"""
 
     # -----------------------------------------------------------------------
-    # 3.1 Az ablak felépítése
+    #region 1. A GUI felépítése
     # -----------------------------------------------------------------------
     def __init__(self, root, on_analyze):
         """root: a Tk ablak.
@@ -230,13 +225,15 @@ class App:
         root.update_idletasks()
         root.minsize(self.panel.winfo_reqwidth() + 200,
                      self.panel.winfo_reqheight() + 20)
+    #endregion
 
     # -----------------------------------------------------------------------
-    # 3.2 A vezérlőpanel elemei
+    #region 2. A vezérlőpanel elemei
     # -----------------------------------------------------------------------
     def add_group(self, row, title):
         """Egy címmel ellátott keretet (mezőcsoportot) tesz a panel adott
         sorába, és visszaadja, hogy a mezőket bele lehessen tenni."""
+
         box = ttk.LabelFrame(self.panel, text=title, padding=(8, 2))
         box.grid(row=row, column=0, sticky="ew", pady=(0, 4))
         box.columnconfigure(1, weight=1)
@@ -245,6 +242,7 @@ class App:
     def add_field(self, box, row, label, variable):
         """Egy felirat + beviteli mező párt tesz a keret adott sorába; a mező
         tartalma a variable változóban van. Visszaadja a beviteli mezőt."""
+
         ttk.Label(box, text=label).grid(row=row, column=0, sticky="w", pady=1)
         entry = ttk.Entry(box, textvariable=variable, width=10)
         entry.grid(row=row, column=1, padx=(8, 0), pady=1, sticky="e")
@@ -253,6 +251,7 @@ class App:
     def add_combo(self, box, row, label, variable, choices):
         """Egy felirat + legördülő lista a keret adott sorába; a listában a
         choices szótár magyar feliratai szerepelnek."""
+
         ttk.Label(box, text=label).grid(row=row, column=0, sticky="w", pady=1)
         combo = ttk.Combobox(box, textvariable=variable, state="readonly",
                              values=list(choices.values()), width=22)
@@ -262,6 +261,7 @@ class App:
         """Csak azok a mezők írhatók, amelyeknek most van szerepük: az ív
         mezői csak ívdarabnál, az ellipszis aránya csak ellipszisnél, a
         sokszög oldalszáma csak sokszögnél."""
+
         if self.var_full.get():
             self.arc_start_entry.configure(state="disabled")
             self.arc_end_entry.configure(state="disabled")
@@ -278,15 +278,17 @@ class App:
             self.sides_entry.configure(state="normal")
         else:
             self.sides_entry.configure(state="disabled")
+    #endregion
 
     # -----------------------------------------------------------------------
-    # 3.3 Események: mezők változása, gombok
+    #region 3. Eseménykezelés: mezők változása, gombok
     # -----------------------------------------------------------------------
     def on_field_change(self, *args):
         """Bármelyik mező változásakor hívódik meg (az args-ot a tkinter
         adja, nem használjuk). Rövid késleltetéssel generál újra, hogy gépelés
         közben ne generáljon minden egyes leütésre: ha közben újabb változás
         jön, a korábbi időzítést töröljük."""
+
         self.update_entry_states()
         if self.generate_job is not None:
             self.root.after_cancel(self.generate_job)
@@ -295,12 +297,14 @@ class App:
     def new_random_set(self):
         """Az "Új véletlen halmaz" gomb: új seedet sorsol (a seed mező
         változása miatt a ponthalmaz automatikusan újragenerálódik)."""
+
         self.var_seed.set(str(new_seed()))
 
     def start_analysis(self):
         """A "Vizsgálat indítása" gomb: a jelenlegi ponthalmazt átadja az
         on_analyze függvénynek (azt a main.py adja meg: az nyitja meg a
         vizsgáló ablakot)."""
+
         # ha egy módosítás utáni újragenerálás még várakozik, most lefuttatjuk,
         # hogy a vizsgáló pontosan a mezőknek megfelelő ponthalmazt kapja
         if self.generate_job is not None:
@@ -315,19 +319,20 @@ class App:
             self.root.after_cancel(self.redraw_job)
             self.redraw_job = None
         self.on_analyze(self.points.copy(), self.ground_truth)
+    #endregion
 
     # -----------------------------------------------------------------------
-    # 3.4 A ponthalmaz generálása és leírása
+    #region 4. A ponthalmaz generálása és leírása
     # -----------------------------------------------------------------------
     def generate(self):
         """Beolvassa a mezőket, és legenerálja velük a ponthalmazt.
+        Hibás mező esetén pirossal a hibaüzenet és a régi ponthalmaz marad meg; 
+        siker esetén frissíti a leírást és a rajzot."""
 
-        Hibás mező esetén piros hibaüzenetet ír ki, és a régi ponthalmaz
-        marad meg; siker esetén frissíti a leírást és a rajzot."""
         self.generate_job = None
+
         try:
-            # --- 1) a mezők beolvasása (a tartalmi ellenőrzést a generátor
-            #        végzi) ---
+            # --- Mezők beolvasása (a tartalmi ellenőrzést a generátorban) ---
             n = read_int(self.var_n.get(), "A pontok száma")
             radius = read_float(self.var_radius.get(), "A névleges sugár")
 
@@ -361,16 +366,17 @@ class App:
             else:
                 seed = read_int(seed_text, "A seed")
 
-            # --- 2) a generálás ---
+            # --- Generálás ---
             points, ground_truth = generate_points(
                 n, radius, arc=arc, angle_mode=angle_mode, shape=shape,
                 shape_params=shape_params, noise_level=noise_level,
                 outlier_fraction=outlier_percent / 100, seed=seed)
+        
         except ValueError as error:
             self.var_error.set(str(error))
             return
 
-        # --- 3) az eredmény megjelenítése ---
+        # --- Eredmény megjelenítése ---
         self.var_error.set("")
         self.points = points
         self.ground_truth = ground_truth
@@ -378,7 +384,8 @@ class App:
         self.draw()
 
     def describe(self, ground_truth, point_count):
-        """Rövid szöveges leírás a ponthalmazról (a panel alján látszik)."""
+        """Rövid leírás a ponthalmazról (a panel alján)"""
+        
         coverage = ground_truth["coverage"]
         if coverage["full_circle"]:
             coverage_text = "teljes kör"
@@ -408,35 +415,44 @@ class App:
         text += f"Véletlen hiba: {noise_text}\n"
         text += f"Kiugró pontok: {ground_truth['outliers']['count']} db (piros)\n"
         text += f"Seed: {ground_truth['seed']}"
+        
         return text
+    #endregion
 
     # -----------------------------------------------------------------------
-    # 3.5 Rajzolás
+    #region 5. Rajzolás
     # -----------------------------------------------------------------------
     def draw(self):
-        """Kirajzolja a ponthalmazt a vászonra: a névleges kört (szaggatott),
-        ív esetén a határoló sugarakat, a pontokat és pirossal a kiugró
-        pontokat. A méretarány a vászon aktuális méretéhez igazodik."""
+        """Kirajzolja a ponthalmazt:
+        névleges kört (szaggatott),
+        ív esetén határoló sugarakat, 
+        pontokat + pirossal a kiugró pontokat
+        Méretarány a vászon aktuális méretéhez igazodik."""
+
         canvas = self.canvas
         canvas.delete("all")
         points = self.points
         ground_truth = self.ground_truth
+
         if points is None or ground_truth is None:   # még nincs ponthalmaz
             return
 
-        # --- 1) a méretarány: mekkora legyen a rajz a vásznon ---
+        # --- Méretarány---
         width = canvas.winfo_width()
         height = canvas.winfo_height()
-        if width <= 1 or height <= 1:     # az ablak még nem jelent meg
+
+        if width <= 1 or height <= 1:     # ha az ablak még nem jelent meg
             width = CANVAS_SIZE
             height = CANVAS_SIZE
 
-        # a rajz közepe a névleges kör középpontja; a méretarányt (scale) úgy
-        # választjuk, hogy a névleges kör és minden pont beférjen
+        # a rajz közepe a névleges kör kp-ja; 
+        # a méretarányt (scale) úgy választjuk, 
+        # hogy a névleges kör és minden pont beférjen
         center_x = ground_truth["center"][0]
         center_y = ground_truth["center"][1]
         radius = ground_truth["radius"]
         extent = radius                   # a legtávolabbi pont távolsága
+
         for point in points:
             distance = math.hypot(point[0] - center_x, point[1] - center_y)
             if distance > extent:
@@ -445,13 +461,13 @@ class App:
         middle_x = width / 2
         middle_y = height / 2
 
-        # --- 2) segédvonalak: névleges kör, az ív határai, a középpont ---
+        # --- Segédvonalak: névleges kör, az ív határai, a középpont ---
         # a névleges kör (szaggatott)
         r = radius * scale
         canvas.create_oval(middle_x - r, middle_y - r, middle_x + r, middle_y + r,
                            outline=GUIDE_COLOR, dash=(4, 4))
 
-        # ívdarabnál az ív két határa (pontozott sugarak)
+        # ív két határa (pontozott sugarak)
         coverage = ground_truth["coverage"]
         if not coverage["full_circle"]:
             for angle_deg in [coverage["start_deg"], coverage["end_deg"]]:
@@ -461,13 +477,13 @@ class App:
                 canvas.create_line(middle_x, middle_y, end_x, end_y,
                                    fill=GUIDE_COLOR, dash=(1, 3))
 
-        # kis kereszt a névleges középpontban
+        # kereszt a névleges középpontban
         canvas.create_line(middle_x - 6, middle_y, middle_x + 6, middle_y,
                            fill=GUIDE_COLOR)
         canvas.create_line(middle_x, middle_y - 6, middle_x, middle_y + 6,
                            fill=GUIDE_COLOR)
 
-        # --- 3) a pontok (az y-t kivonjuk, mert a képernyőn az y lefelé nő) ---
+        # --- a pontok (y lefelé nő) ---
         outlier_indices = ground_truth["outliers"]["indices"]
         for i in range(len(points)):
             x = middle_x + (points[i][0] - center_x) * scale
@@ -479,29 +495,34 @@ class App:
             canvas.create_oval(x - POINT_RADIUS, y - POINT_RADIUS,
                                x + POINT_RADIUS, y + POINT_RADIUS,
                                fill=color, outline="")
+    #endregion
 
     # -----------------------------------------------------------------------
-    # 3.6 Átméretezés
+    #region 6. Átméretezés
     # -----------------------------------------------------------------------
     def on_resize(self, event):
         """A rajzterület átméretezésekor újrarajzol; rövid késleltetéssel,
         hogy húzás közben ne rajzoljon minden képpontnyi változásnál."""
+
         if self.redraw_job is not None:
             self.root.after_cancel(self.redraw_job)
         self.redraw_job = self.root.after(30, self.redraw)
 
     def redraw(self):
         """Átméretezés után újrarajzolja a ponthalmazt és a gombokat."""
+
         self.redraw_job = None
         self.draw()
         self.refresh_widgets(self.root)
 
     def refresh_widgets(self, widget):
-        """macOS-en átméretezés után a gombok és a legördülő listák néha nem
-        rajzolódnak újra, csak ha fölé visszük az egeret. Ha egy beállítást
-        önmagára állítunk (ez semmit nem változtat), az újrarajzolja őket.
+        """Újrarajzolás
+        Ha egy beállítást önmagára állítunk (ez semmit nem változtat), az újrarajzolja őket.
         A függvény saját magát hívja a belső elemekre is (rekurzió)."""
+
         for child in widget.winfo_children():
             if isinstance(child, ttk.Widget):
                 child["cursor"] = child["cursor"]
             self.refresh_widgets(child)
+    #endregion
+#endregion

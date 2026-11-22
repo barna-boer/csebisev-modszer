@@ -1,8 +1,8 @@
 """
-Ponthalmaz-generátor körillesztéshez (Csebisev-elv).
+Ponthalmaz-generátor körillesztéshez.
 
 A generálás menete (minden pontra):
-  1. pont szögének választása (a teljes körön vagy  ívdarabon)
+  1. pont szögének választása (a teljes körön vagy ívdarabon)
   2. sugár kiszámolása: a névleges sugár, (az alakhibával torzítva ellipszis, sokszög),
   3. véletlen hiba hozzáadása (zaj),
   4. kiugró pont: a pont sugarát ±d távolsággal eltoljuk
@@ -56,14 +56,12 @@ def is_number(value):
         return False
     return math.isfinite(value)
 
-
 def is_whole_number(value):
     """Igaz, ha value egész szám (int, de nem True/False)."""
     
     if isinstance(value, bool):
         return False
     return isinstance(value, int)
-
 
 def check_number(value, name):
     """Ellenőrzi, hogy value véges szám, és float-ként adja vissza.
@@ -73,13 +71,11 @@ def check_number(value, name):
         raise ValueError(f"{name}: véges szám kell (kapott érték: {value}).")
     return float(value)
 
-
 def arc_length(start, end):
     """Az ív hossza fokban a kezdőszögtől pozitív irányban a végszögig.
     A 0°-on átforduló ív is megengedett (pl. 300° -> 60° = 120°)."""
     
     return (end - start) % 360
-
 
 def check_shape_params(shape, shape_params):
     """Az alakhiba paraméterei: az alapértékekből indulunk, és felülírjuk őket
@@ -134,7 +130,6 @@ def make_angles(rnd, count, start, length, angle_mode, full_circle):
             angles.append(start + rnd.uniform(0, length))
     
     return angles
-
 
 def shape_radius(angle, radius, shape, params):
     """A pont sugara az alakhibával torzítva; angle a pont szöge radiánban."""
