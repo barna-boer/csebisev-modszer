@@ -119,9 +119,14 @@ def prepare(points, max_iter, bounds):
 # ===========================================================================
 #region 3. Keresőmódszerek
 
-# Mindegyik felülete: f(points, max_iter, seed, bounds = None) -> FitResult
+# Mindegyik felülete:
+#     f(points, max_iter, seed, bounds = None, history = None) -> FitResult
 # A seed a véletlenszám-generátor kezdőértéke: ugyanazzal a seeddel mindig
 # ugyanaz az eredmény jön ki.
+# A history (nem kötelező) egy lista: ha megadjuk, a módszer a kezdőállapot
+# után és minden iteráció után hozzáfűz egy (aktuális szélesség, eddigi
+# legjobb szélesség) párt. Ebből rajzolja a futas_grafikon.py a futás
+# grafikonját. A keresést magát nem befolyásolja.
 # Egy "iteráció" módszerenként eltér, ezért a 
 # célfüggvény- kiértékeléseket is számoljuk a módszerek összehasonlításához
 # ===========================================================================
@@ -140,7 +145,7 @@ HC_START_STEP = 0.1    # a kezdő lépésköz a tartomány méretéhez képest
 HC_MIN_STEP = 1e-10    # ennél kisebb lépésköznél lokális optimumon vagyunk
 
 
-def hill_climbing(points, max_iter=200, seed=None, bounds=None):
+def hill_climbing(points, max_iter=200, seed=None, bounds=None, history=None):
     """Hegymászó algoritmus véletlen újraindítással.
 
     1) Legyen s egy véletlen kezdeti állapot.
@@ -167,6 +172,8 @@ def hill_climbing(points, max_iter=200, seed=None, bounds=None):
 
     # az eddigi legjobb állapot (újraindítások miatt kell külön tárolni)
     best_a, best_b, best_f = a, b, f
+    if history is not None:
+        history.append((f, best_f))
 
     # 2) leállási feltétel: max_iter iteráció után vége a keresésnek;
     #    addig ismételjük a 3) lépést
@@ -198,6 +205,10 @@ def hill_climbing(points, max_iter=200, seed=None, bounds=None):
         if f < best_f:
             best_a, best_b, best_f = a, b, f
 
+        # a futás grafikonjához: hol tart most a keresés
+        if history is not None:
+            history.append((f, best_f))
+
     # az eredmény: a keresés során talált legjobb állapot
     return make_result("Hegymászó (újraindítással)", points, best_a, best_b,
                        evaluations, start_time)
@@ -211,7 +222,8 @@ SA_END_STEP = 1e-9      # a lépésköz a futás végén (a tartományhoz képes
 SA_END_RATIO = 1e-6     # a végső hőmérséklet a kezdőnek ekkora része
 
 
-def simulated_annealing(points, max_iter=2000, seed=None, bounds=None):
+def simulated_annealing(points, max_iter=2000, seed=None, bounds=None,
+                        history=None):
     """Szimulált hűtés (4. előadás, 51-53. dia).
 
     1) Legyen s egy véletlenül választott kezdeti megoldás.
@@ -241,6 +253,8 @@ def simulated_annealing(points, max_iter=2000, seed=None, bounds=None):
     f = width_at(points, a, b)
     evaluations += 1
     best_a, best_b, best_f = a, b, f
+    if history is not None:
+        history.append((f, best_f))
 
     # a kezdő hőmérséklet a kezdőállapot szélességének tizede,
     # minden lépésben `cooling`-szorosára csökken
@@ -278,6 +292,10 @@ def simulated_annealing(points, max_iter=2000, seed=None, bounds=None):
         # a hőmérséklet csökkentése
         temperature = temperature * cooling
 
+        # a futás grafikonjához: hol tart most a keresés
+        if history is not None:
+            history.append((f, best_f))
+
     # az eredmény: a keresés során talált legjobb állapot
     return make_result("Szimulált hűtés", points, best_a, best_b, evaluations,
                        start_time)
@@ -293,7 +311,8 @@ GA_START_MUTATION = 0.1  # a mutáció kezdeti mérete a tartományhoz képest
 GA_END_MUTATION = 1e-7   # a mutáció mérete a futás végén (a tartományhoz képest)
 
 
-def genetic_algorithm(points, max_iter=200, seed=None, bounds=None):
+def genetic_algorithm(points, max_iter=200, seed=None, bounds=None,
+                      history=None):
     """Genetikus algoritmus (4. előadás, 60-66. dia).
 
     Egyed = egy középpont (a, b), a "génjei" az a és a b koordináta.
@@ -308,6 +327,8 @@ def genetic_algorithm(points, max_iter=200, seed=None, bounds=None):
        legjobb GA_POPULATION darab marad meg);
        menj vissza 2)-re.
     Egy iteráció = egy generáció (GA_POPULATION kiértékelés).
+    A history-ba "aktuális" értékként a populáció átlagos szélessége kerül
+    (a populációnak nincs egyetlen aktuális állapota).
     """
     start_time = time.perf_counter()
     points, (a_min, a_max, b_min, b_max) = prepare(points, max_iter, bounds)
@@ -324,6 +345,8 @@ def genetic_algorithm(points, max_iter=200, seed=None, bounds=None):
         f = width_at(points, a, b)
         evaluations += 1
         population.append((a, b, f))
+    if history is not None:
+        history.append(population_widths(population))
 
     # 2) leállási feltétel: max_iter iteráció után vége a keresésnek;
     #    addig ismételjük a 3) lépést
@@ -369,6 +392,10 @@ def genetic_algorithm(points, max_iter=200, seed=None, bounds=None):
         everyone.sort(key=get_width)
         population = everyone[:GA_POPULATION]
 
+        # a futás grafikonjához: hol tart most a keresés
+        if history is not None:
+            history.append(population_widths(population))
+
     # a sorba rendezés miatt az első egyed a legjobb
     best_a, best_b, best_f = population[0]
     # az eredmény: a keresés során talált legjobb állapot
@@ -390,7 +417,19 @@ def select_parent(population, rnd):
     if first_f < second_f:
         return first_a, first_b, first_f
     return second_a, second_b, second_f
-    
+
+
+def population_widths(population):
+    """A populáció átlagos és legkisebb szélessége, a history-hoz.
+    Visszatérés: (átlag, legjobb)."""
+    total = 0
+    best = math.inf
+    for a, b, f in population:
+        total = total + f
+        if f < best:
+            best = f
+    return total / len(population), best
+
 #endregion
 
 # --- A módszerek listája ---

@@ -13,7 +13,8 @@ Az ablakban látszik:
     Egy sorra kattintva annak az eredménye látszik a grafikonon.
 A "Futtatás" gombbal ugyanarra a ponthalmazra más iterációszámmal is újra
 lefuttathatók a módszerek. Az ablak megnyitásakor egyszer automatikusan
-lefutnak.
+lefutnak. A "Futás grafikonjai" gomb külön ablakban megmutatja, hogyan
+haladt a három módszer iterációról iterációra (futas_grafikon.py).
 
 A névleges (várt) értékek a generálásból jönnek: a névleges kör középpontja
 és sugara. A szélesség, r és R ennél a sornál a névleges középpontból mérve
@@ -36,6 +37,7 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Circle
 
 from code_base import korillesztes as kor
+from code_base.futas_grafikon import FutasGrafikonApp
 
 # ===========================================================================
 #region Beállítások és segédfüggvények
@@ -123,7 +125,8 @@ class VizsgaloApp:
         window.minsize(1100, 560)
         window.protocol("WM_DELETE_WINDOW", self.close)   # az X gomb
 
-        # --- felső sor: Vissza gomb, iterációk száma, Futtatás gomb, üzenet ---
+        # --- felső sor: Vissza gomb, iterációk száma, Futtatás és
+        #     Futás grafikonjai gomb, üzenet ---
         top = ttk.Frame(window, padding=(10, 8))
         top.pack(fill="x")
         back_button = ttk.Button(top, text="← Vissza a generátorhoz",
@@ -136,6 +139,9 @@ class VizsgaloApp:
         entry.bind("<Return>", self.on_enter)     # Enterre is fut
         self.run_button = ttk.Button(top, text="Futtatás", command=self.run)
         self.run_button.pack(side="left")
+        charts_button = ttk.Button(top, text="Futás grafikonjai",
+                                   command=self.open_run_charts)
+        charts_button.pack(side="left", padx=(8, 0))
         self.var_status = tk.StringVar()
         self.status_label = ttk.Label(top, textvariable=self.var_status)
         self.status_label.pack(side="left", padx=12)
@@ -227,6 +233,25 @@ class VizsgaloApp:
         """Enter a mezőben: ugyanaz, mint a Futtatás gomb."""
 
         self.run()
+
+    def open_run_charts(self):
+        """A "Futás grafikonjai" gomb: új ablakban megnyitja a három módszer
+        futásának grafikonját (futas_grafikon.py), ugyanerre a ponthalmazra
+        és a mezőben megadott iterációszámmal."""
+
+        # --- Iterációszám beolvasása ---
+        try:
+            max_iter = int(self.var_iter.get().strip())
+        except ValueError:
+            max_iter = 0
+        if max_iter < 1:
+            self.show_status("Az iterációk száma legalább 1 legyen (egész szám).",
+                             True)
+            return
+
+        # --- Az új ablak (a vizsgáló ablakkal együtt zárul be) ---
+        charts_window = tk.Toplevel(self.window)
+        FutasGrafikonApp(charts_window, self.points, self.ground_truth, max_iter)
 
     def show_status(self, text, is_error):
         """Üzenet a Futtatás gomb mellé; hibánál piros betűvel."""

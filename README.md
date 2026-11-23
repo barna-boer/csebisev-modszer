@@ -13,6 +13,7 @@ A projekt célja: ponthalmazra kört illeszteni Csebisev elve szerint (két konc
 | `code_base/gui.py` | a generátor ablaka, a „Vizsgálat indítása” gombbal |
 | `code_base/korillesztes.py` | a körillesztés: célfüggvény és a három keresőmódszer (tkinter és matplotlib nélkül) |
 | `code_base/vizsgalo_gui.py` | a vizsgáló ablak: grafikon és összehasonlító táblázat |
+| `code_base/futas_grafikon.py` | a három módszer futásának grafikonja (iterációnként az aktuális és a legjobb szélesség) |
 | `tests/teszt_korillesztes.py` | rövid, nem grafikus ellenőrző szkript |
 
 ## Követelmények
@@ -72,6 +73,19 @@ Mivel egy iteráció módszerenként más munka, a táblázat a célfüggvény-k
 - **Grafikon:** a ponthalmaz (a kiugró pontok pirossal), a névleges (várt) kör és középpont szürkével, a kiválasztott módszer két koncentrikus köre (r és R sugárral) és az illesztett kör ((r + R) / 2 sugárral, ugyanazzal a középponttal).
 - **Táblázat:** Módszer, Szélesség (R − r), r, R, Sugár (r + R) / 2, Középpont a, Középpont b, Eltérés a névleges középponttól, Futásidő (s), Célfüggvény-kiértékelések száma. A legkisebb szélességű módszer sora ki van emelve; egy sorra kattintva annak az eredménye látszik a grafikonon.
 - **Névleges (várt) sor** (a táblázat első, szürke sora): a generálás középpontja és sugara. A szélesség, r és R ennél a sornál a névleges középpontból mérve értendő, vagyis ekkora gyűrűt okoznak a generált hibák (pl. 0,9-es ellipszisnél kb. a két féltengely különbsége, ±e zajnál kb. 2e). Egy jó módszer ennél nem ad nagyobb szélességet. A kiugró pontok viszont a Csebisev-illesztést elhúzhatják a névleges középponttól.
+
+## A futás grafikonjai (futas_grafikon.py)
+
+A vizsgáló ablak **„Futás grafikonjai”** gombja külön ablakban, ugyanarra a ponthalmazra és a megadott iterációszámmal lefuttatja a három módszert. Futás közben eltárolja, hogy iterációnként hol tart a keresés, és az iterációk végigfutása után kirajzolja. Mindhárom módszer külön grafikont kap:
+
+- vízszintesen az iteráció, függőlegesen a szélesség (R − r), logaritmikus skálán,
+- **kék:** az aktuális állapot szélessége (genetikus algoritmusnál a populáció átlaga),
+- **zöld:** az eddig talált legjobb szélesség,
+- **szürke szaggatott:** a névleges (várt) szélesség.
+
+A grafikonok címében a futás végén elért két érték látszik. Az adatokat a `korillesztes.py` módszerei adják: a nem kötelező `history` listába a kezdőállapot után és minden iteráció után beírják az (aktuális, legjobb) szélességet. Ez a keresést nem befolyásolja.
+
+Önállóan, egy minta ponthalmazzal is indítható: `python3 code_base/futas_grafikon.py`.
 
 ## Használat a kódból
 
