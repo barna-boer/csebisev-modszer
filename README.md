@@ -11,7 +11,7 @@ A projekt célja: ponthalmazra kört illeszteni Csebisev elve szerint (két konc
 | `main.py` | a program indítója: megnyitja a generátort, és összeköti a két ablakot |
 | `code_base/ponthalmaz_generator.py` | a ponthalmaz generálása (tkinter nélkül) |
 | `code_base/gui.py` | a generátor ablaka, a „Vizsgálat indítása” gombbal |
-| `code_base/korillesztes.py` | a körillesztés: célfüggvény és a négy keresőmódszer (tkinter és matplotlib nélkül) |
+| `code_base/korillesztes.py` | a körillesztés: célfüggvény és a három keresőmódszer (tkinter és matplotlib nélkül) |
 | `code_base/vizsgalo_gui.py` | a vizsgáló ablak: grafikon és összehasonlító táblázat |
 | `tests/teszt_korillesztes.py` | rövid, nem grafikus ellenőrző szkript |
 
@@ -53,22 +53,21 @@ A **„Vizsgálat indítása”** gomb bezárja (elrejti) a generátorablakot, �
 
 **Célfüggvény:** egy (a, b) középpontra r a pontok legkisebb, R a legnagyobb távolsága a középponttól; a minimalizálandó hiba a gyűrű szélessége, R − r.
 
-**A négy keresőmódszer** (felületük: `f(points, max_iter, seed, bounds=None) -> FitResult`):
+**A három keresőmódszer** (felületük: `f(points, max_iter, seed, bounds=None) -> FitResult`):
 
 | Módszer | Egy iteráció | Kiértékelés / iteráció | Előadás |
 |---|---|---|---|
 | Hegymászó véletlen újraindítással | a 8 szomszéd megvizsgálása, lépés a legjobbra | 8 | Keresés II., 45. és 50. dia |
 | Szimulált hűtés | egy véletlen szomszéd kipróbálása | 1 | Keresés II., 51–53. dia |
 | Genetikus algoritmus | egy generáció (szelekció, kereszteződés, mutáció, a legrosszabbak eldobása) | 40 | Keresés II., 60–66. dia |
-| Részecskeraj-optimalizálás (PSO) | a raj egy lépése | 30 | Keresés III., 22–23. dia |
 
 A módszerek az előadásokban megadott lépéseket követik, egyszerű ciklusokkal megírva (a lépések számozása a kódban is az előadásét követi). Mivel itt minimalizálunk, az előadás „f(s′) ≥ f(s)” feltétele „f(s′) < f(s)” lesz. A leállási feltétel az iterációk száma, mert a legkisebb szélességet előre nem ismerjük.
 
-Mivel egy iteráció módszerenként más munka, a táblázat a célfüggvény-kiértékelések számát is mutatja. A `fit_all(points, max_iter, seed)` mind a négy módszert lefuttatja ugyanarra a ponthalmazra, ugyanazzal a max_iter értékkel és seeddel. A keresési tartomány a ponthalmaz befoglaló téglalapjának közepe körüli négyzet, amelynek oldala a hosszabbik oldal kétszerese.
+Mivel egy iteráció módszerenként más munka, a táblázat a célfüggvény-kiértékelések számát is mutatja. A `fit_all(points, max_iter, seed)` mindhárom módszert lefuttatja ugyanarra a ponthalmazra, ugyanazzal a max_iter értékkel és seeddel. A keresési tartomány a ponthalmaz befoglaló téglalapjának közepe körüli négyzet, amelynek oldala a hosszabbik oldal kétszerese.
 
 ## A vizsgáló ablak (vizsgalo_gui.py)
 
-- Megnyitáskor a négy módszer egyszer automatikusan lefut (max_iter = 200, seed = 1).
+- Megnyitáskor a három módszer egyszer automatikusan lefut (max_iter = 50, seed = 1).
 - **Iterációk száma** mező és **Futtatás** gomb: ugyanarra a ponthalmazra más iterációszámmal újra lefuttathatók.
 - **Grafikon:** a ponthalmaz (a kiugró pontok pirossal), a névleges (várt) kör és középpont szürkével, a kiválasztott módszer két koncentrikus köre (r és R sugárral) és az illesztett kör ((r + R) / 2 sugárral, ugyanazzal a középponttal).
 - **Táblázat:** Módszer, Szélesség (R − r), r, R, Sugár (r + R) / 2, Középpont a, Középpont b, Eltérés a névleges középponttól, Futásidő (s), Célfüggvény-kiértékelések száma. A legkisebb szélességű módszer sora ki van emelve; egy sorra kattintva annak az eredménye látszik a grafikonon.

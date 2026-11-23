@@ -9,11 +9,10 @@ minimális. Egy (a, b) középpont esetén
     célfüggvény: f(a, b) = R - r                       (ezt minimalizáljuk)
 Egy állapot tehát egy (a, b) középpont, a keresés a síkon zajlik.
 
-A négy keresőmódszer az előadások lépései alapján implementálva:
+A három keresőmódszer az előadások lépései alapján implementálva:
   - hegymászó algoritmus véletlen újraindítással (4. előadás, 45. és 50. dia)
   - szimulált hűtés (4. előadás, 51-53. dia)
   - genetikus algoritmus (4. előadás, 60-66. dia)
-  - részecskeraj-optimalizálás, PSO (5. előadás, 22-23. dia)
 Mivel minimalizálunk, az előadásbeli "f(s') >= f(s)" (jobb) feltétel itt
 "f(s') < f(s)" lesz: a kisebb szélesség a jobb.
 
@@ -336,6 +335,7 @@ def genetic_algorithm(points, max_iter=200, seed=None, bounds=None):
 
         children = []
         while len(children) < GA_POPULATION:
+        #SÚLLYAL MINDKÉT KOORDINÁTÁT FIGYELEMBE VENNI
             # 3) szelekció: két-két véletlen egyed közül a jobbik lesz a
             # szülő (a rátermettebb nagyobb eséllyel, de nem biztosan)
             parent1_a, parent1_b, parent1_f = select_parent(population, rnd)
@@ -393,117 +393,17 @@ def select_parent(population, rnd):
     
 #endregion
 
-# -------------------------------------------------------------------------
-#region 3.4 Részecskeraj-optimalizálás (PSO)
-# -------------------------------------------------------------------------
-PSO_SWARM = 30      # a részecskék száma
-PSO_INERTIA = 0.7   # w: mennyire tartja meg a részecske az előző sebességét
-PSO_C1 = 1.5        # c1: mennyire húz a részecske saját legjobb helye felé
-PSO_C2 = 1.5        # c2: mennyire húz a raj legjobb helye felé
-
-
-def particle_swarm(points, max_iter=200, seed=None, bounds=None):
-    """Részecskeraj-optimalizálás
-
-    Minden részecskének van helye (x = egy középpont), sebessége (v),
-    és megjegyzi a saját eddigi legjobb helyét (p). A raj az összes
-    részecske legjobb helyét is ismeri (g).
-    1) A részecskék véletlen helyről, kis véletlen sebességgel indulnak.
-    2) Ha a leállási feltétel teljesül (elfogyott a max_iter), állj le, és
-       add vissza g-t.
-    3) Egyébként minden részecskére:
-           v = w*v + c1*r1*(p - x) + c2*r2*(g - x)    (r1, r2 véletlen 0-1)
-           x = x + v
-       értékeld ki az új helyet; ha jobb, mint p, legyen p = x;
-       ha jobb, mint g, legyen g = x;
-       menj vissza 2)-re.
-    Egy iteráció = a raj egy lépése (PSO_SWARM kiértékelés).
-    """
-    start_time = time.perf_counter()
-    points, (a_min, a_max, b_min, b_max) = prepare(points, max_iter, bounds)
-    rnd = random.Random(seed)
-    size = a_max - a_min
-    evaluations = 0
-
-    # 1) a pontok kezdeti helye és sebessége
-    #    (az i-edik részecske adatai minden listában az i-edik helyen vannak)
-    pos_a = []         # a részecskék helye (x)
-    pos_b = []
-    vel_a = []         # a részecskék sebessége (v)
-    vel_b = []
-    own_best_a = []    # a részecskék saját eddigi legjobb helye (p)
-    own_best_b = []
-    own_best_f = []    # és ott a szélesség
-    for i in range(PSO_SWARM):
-        a = rnd.uniform(a_min, a_max)
-        b = rnd.uniform(b_min, b_max)
-        f = width_at(points, a, b)
-        evaluations += 1
-        pos_a.append(a)
-        pos_b.append(b)
-        vel_a.append(rnd.uniform(-0.01, 0.01) * size)
-        vel_b.append(rnd.uniform(-0.01, 0.01) * size)
-        own_best_a.append(a)
-        own_best_b.append(b)
-        own_best_f.append(f)
-
-    # a raj legjobbja (g): a legkisebb szélességű saját legjobb
-    swarm_best_a, swarm_best_b, swarm_best_f = own_best_a[0], own_best_b[0], own_best_f[0]
-    for i in range(1, PSO_SWARM):
-        if own_best_f[i] < swarm_best_f:
-            swarm_best_a, swarm_best_b, swarm_best_f = own_best_a[i], own_best_b[i], own_best_f[i]
-
-    # 2) leállási feltétel: max_iter iteráció után vége a keresésnek;
-    #    addig ismételjük a 3) lépést
-    for iteration in range(max_iter):
-        for i in range(PSO_SWARM):
-            # 3) az új sebesség: v = w*v + c1*r1*(p - x) + c2*r2*(g - x)
-            r1 = rnd.random()
-            r2 = rnd.random()
-            vel_a[i] = (PSO_INERTIA * vel_a[i]
-                        + PSO_C1 * r1 * (own_best_a[i] - pos_a[i])
-                        + PSO_C2 * r2 * (swarm_best_a - pos_a[i]))
-            r1 = rnd.random()
-            r2 = rnd.random()
-            vel_b[i] = (PSO_INERTIA * vel_b[i]
-                        + PSO_C1 * r1 * (own_best_b[i] - pos_b[i])
-                        + PSO_C2 * r2 * (swarm_best_b - pos_b[i]))
-
-            # az új hely: x = x + v (a keresési tartományon belül)
-            pos_a[i] = clamp(pos_a[i] + vel_a[i], a_min, a_max)
-            pos_b[i] = clamp(pos_b[i] + vel_b[i], b_min, b_max)
-
-            # az új hely kiértékelése
-            a = pos_a[i]
-            b = pos_b[i]
-            f = width_at(points, a, b)
-            evaluations += 1
-
-            # ha jobb, mint a saját legjobb (p), az lesz az új p;
-            # ha jobb, mint a raj legjobbja (g), az lesz az új g
-            if f < own_best_f[i]:
-                own_best_a[i], own_best_b[i], own_best_f[i] = a, b, f
-                
-                if f < swarm_best_f:
-                    swarm_best_a, swarm_best_b, swarm_best_f = a, b, f
-
-    # az eredmény: a keresés során talált legjobb állapot
-    return make_result("Részecskeraj (PSO)", points, swarm_best_a,
-                       swarm_best_b, evaluations, start_time)
-#endregion
-
 # --- A módszerek listája ---
 # ebben a sorrendben futnak és jelennek meg a táblázatban
-SEARCH_METHODS = [hill_climbing, simulated_annealing, genetic_algorithm,
-                  particle_swarm]
+SEARCH_METHODS = [hill_climbing, simulated_annealing, genetic_algorithm]
 
 #endregion
 
 # ===========================================================================
-#region 4. Négy módszer megjelenítése egy ponthalmazon
+#region 4. Három módszer megjelenítése egy ponthalmazon
 # ===========================================================================
 def fit_all(points, max_iter, seed=1, bounds=None):
-    """A négy keresőmódszer lefuttatása ugyanarra a ponthalmazra, ugyanazzal
+    """A három keresőmódszer lefuttatása ugyanarra a ponthalmazra, ugyanazzal
     a max_iter értékkel és seeddel. A módszerek egymás után futnak, hogy a
     futásidejük mérése ne zavarja egymást.
     Visszatérés: FitResult-ok listája a SEARCH_METHODS sorrendjében."""

@@ -2,14 +2,14 @@
 Grafikus felület a Csebisev-körillesztés vizsgálatához.
 
 A generátorból (gui.py, "Vizsgálat indítása" gomb) átvett ponthalmazra
-lefut a négy keresőmódszer (hegymászó, szimulált hűtés, genetikus
-algoritmus, részecskeraj), mind ugyanazzal a max_iter értékkel és seeddel.
+lefut a három keresőmódszer (hegymászó, szimulált hűtés, genetikus
+algoritmus), mind ugyanazzal a max_iter értékkel és seeddel.
 Az ablakban látszik:
   - egy grafikon: a ponthalmaz, a névleges (várt) kör, a kiválasztott
     módszer két koncentrikus köre (r és R sugárral) és az illesztett kör
     ((r + R) / 2 sugárral),
   - egy összehasonlító táblázat: legfelül a névleges (várt) értékek, alatta
-    a négy módszer. A legkisebb szélességű módszer sora ki van emelve.
+    a három módszer. A legkisebb szélességű módszer sora ki van emelve.
     Egy sorra kattintva annak az eredménye látszik a grafikonon.
 A "Futtatás" gombbal ugyanarra a ponthalmazra más iterációszámmal is újra
 lefuttathatók a módszerek. Az ablak megnyitásakor egyszer automatikusan
@@ -80,11 +80,11 @@ class VizsgaloApp:
     """A vizsgáló ablak.
 
     Felül az iterációszám-mező és a Futtatás gomb, középen a grafikon, alul
-    az összehasonlító táblázat a négy keresőmódszer eredményével.
+    az összehasonlító táblázat a három keresőmódszer eredményével.
 
     Az osztály részei:
       1. GUI felépítése
-      2. a négy módszer futtatása
+      2. a három módszer futtatása
       3. az összehasonlító táblázat
       4. a grafikon
       5. vissza a generátorhoz, bezárás
@@ -104,7 +104,7 @@ class VizsgaloApp:
         self.ground_truth = ground_truth
         self.on_close = on_close
         self.on_back = on_back
-        self.results = []           # a négy módszer eredménye (FitResult-ok)
+        self.results = []           # a három módszer eredménye (FitResult-ok)
         self.refresh_job = None     # a késleltetett újrarajzolás azonosítója
 
         # --- a névleges (várt) értékek a generálás adataiból ---
@@ -153,7 +153,7 @@ class VizsgaloApp:
         for column in COLUMNS:
             column_ids.append(column[0])
         self.tree = ttk.Treeview(bottom, columns=column_ids, show="headings",
-                                 height=5, selectmode="browse")
+                                 height=4, selectmode="browse")
         for column_id, title, width in COLUMNS:
             self.tree.heading(column_id, text=title)
             if column_id == "method":
@@ -192,10 +192,10 @@ class VizsgaloApp:
     #endregion
 
     # -----------------------------------------------------------------------
-    #region 2. A négy módszer futtatása
+    #region 2. A három módszer futtatása
     # -----------------------------------------------------------------------
     def run(self):
-        """Beolvassa az iterációk számát, lefuttatja vele a négy módszert
+        """Beolvassa az iterációk számát, lefuttatja vele a három módszert
         (seed = SEED), és frissíti a táblázatot meg a grafikont.
         Hibás iterációszámnál piros üzenetet ír ki, és nem fut le."""
 
@@ -243,7 +243,7 @@ class VizsgaloApp:
     # -----------------------------------------------------------------------
     def fill_table(self):
         """Újratölti a táblázatot: legfelül a névleges (várt) sor, alatta a
-        négy módszer. A legkisebb szélességű módszer sorát kiemeli és
+        három módszer. A legkisebb szélességű módszer sorát kiemeli és
         kijelöli, így a grafikonon alapból az látszik."""
 
         # --- Régi sorok törlése ---

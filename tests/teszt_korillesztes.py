@@ -5,7 +5,7 @@ Futtatás (a projekt gyökeréből):  python3 tests/teszt_korillesztes.py
 Kilépési kód: 0, ha minden ellenőrzés sikeres, különben 1.
 
 Ellenőrzi:
-  1. ismert tökéletes körre (zaj nélkül) mind a négy módszer 0-hoz közeli
+  1. ismert tökéletes körre (zaj nélkül) mindhárom módszer 0-hoz közeli
      szélességet ad,
   2. azonos seeddel azonos eredmény jön ki.
 """
@@ -49,7 +49,6 @@ tests = [
     (kor.hill_climbing, 1000),
     (kor.simulated_annealing, 10000),
     (kor.genetic_algorithm, 300),
-    (kor.particle_swarm, 300),
 ]
 for method, iterations in tests:
     # 5 különböző seeddel futtatjuk, és a legrosszabb eredményt nézzük
