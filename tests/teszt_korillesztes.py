@@ -16,13 +16,13 @@ import sys
 # ===========================================================================
 # 1. Előkészítés
 # ===========================================================================
-# a projekt mappája (a tests mappa szülője): ezt felvesszük a Python
-# keresési útvonalára, hogy a code_base mappa fájljai importálhatók legyenek
-project_folder = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_folder)
+# a code_base mappát felvesszük a Python keresési útvonalára, hogy az ottani
+# fájlok ugyanúgy importálhatók legyenek, mint a _main.py-ból
+tests_folder = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(tests_folder, "..", "code_base"))
 
-from code_base import korillesztes as kor
-from code_base.ponthalmaz_generator import generate_points
+from generator.ponthalmaz_generator import generate_points
+from kiertekelo import korillesztes as kor
 
 failures = 0     # a sikertelen ellenőrzések száma
 
@@ -44,7 +44,7 @@ def check(condition, text):
 # 100 pont pontosan az R = 100 sugarú körön.
 # A módszerek egy iterációja különböző munka (1-40 kiértékelés), ezért
 # nagyjából azonos kiértékelésszámot adunk nekik (kb. 8-12 ezret).
-circle, ground_truth = generate_points(100, radius=100, seed=1)
+circle, generation_info = generate_points(100, radius=100, seed=1)
 tests = [
     (kor.hill_climbing, 1000),
     (kor.simulated_annealing, 10000),
@@ -53,29 +53,25 @@ tests = [
 for method, iterations in tests:
     # 5 különböző seeddel futtatjuk, és a legrosszabb eredményt nézzük
     worst = 0
-    name = ""
     for seed in range(5):
         result = method(circle, iterations, seed)
-        name = result.method
-        if result.width > worst:
-            worst = result.width
+        worst = max(worst, result.width)
     check(worst < 0.001,
-          f"tökéletes kör, {name} ({iterations} iteráció, 5 seed): "
+          f"tökéletes kör, {result.method_name} ({iterations} iteráció, 5 seed): "
           f"legrosszabb szélesség {worst:.1e} (< 1e-3, R = 100)")
 
 # ===========================================================================
 # 3. Ellenőrzés: azonos seed -> azonos eredmény
 # ===========================================================================
-points, ground_truth = generate_points(100, radius=100, noise_level=1, seed=7)
-first = kor.fit_all(points, 100, seed=42)
-second = kor.fit_all(points, 100, seed=42)
+points, generation_info = generate_points(100, radius=100, noise=1, seed=7)
+first = kor.fit_all(points, 100, 42)
+second = kor.fit_all(points, 100, 42)
 for i in range(len(first)):
-    result1 = first[i]
-    result2 = second[i]
-    same = (result1.center == result2.center
-            and result1.width == result2.width
-            and result1.evaluations == result2.evaluations)
-    check(same, f"{result1.method}: azonos seed -> azonos eredmény")
+    same = (first[i].a == second[i].a
+            and first[i].b == second[i].b
+            and first[i].width == second[i].width
+            and first[i].evaluations == second[i].evaluations)
+    check(same, f"{first[i].method_name}: azonos seed -> azonos eredmény")
 
 # ===========================================================================
 # 4. Összesítés (kilépési kód: 0 = minden rendben, 1 = volt hiba)

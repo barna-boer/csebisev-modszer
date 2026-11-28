@@ -8,12 +8,12 @@ A projekt célja: ponthalmazra kört illeszteni Csebisev elve szerint (két konc
 
 | Fájl | Tartalom |
 |---|---|
-| `main.py` | a program indítója: megnyitja a generátort, és összeköti a két ablakot |
-| `code_base/ponthalmaz_generator.py` | a ponthalmaz generálása (tkinter nélkül) |
-| `code_base/gui.py` | a generátor ablaka, a „Vizsgálat indítása” gombbal |
-| `code_base/korillesztes.py` | a körillesztés: célfüggvény és a három keresőmódszer (tkinter és matplotlib nélkül) |
-| `code_base/vizsgalo_gui.py` | a vizsgáló ablak: grafikon és összehasonlító táblázat |
-| `code_base/futas_grafikon.py` | a három módszer futásának grafikonja (iterációnként az aktuális és a legjobb szélesség) |
+| `code_base/_main.py` | a program indítója: megnyitja a generátort, és összeköti a két ablakot |
+| `code_base/generator/ponthalmaz_generator.py` | a ponthalmaz generálása (tkinter nélkül) |
+| `code_base/generator/generator_gui.py` | a generátor ablaka, a „Vizsgálat indítása” gombbal |
+| `code_base/kiertekelo/korillesztes.py` | a körillesztés: célfüggvény és a három keresőmódszer (tkinter és matplotlib nélkül) |
+| `code_base/kiertekelo/vizsgalo_gui.py` | a vizsgáló ablak: grafikon és összehasonlító táblázat |
+| `code_base/kiertekelo/futas_grafikon.py` | a három módszer futásának grafikonja (iterációnként az aktuális és a legjobb szélesség) |
 | `tests/teszt_korillesztes.py` | rövid, nem grafikus ellenőrző szkript |
 
 ## Követelmények
@@ -31,13 +31,13 @@ python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-python3 main.py                        # generátor -> "Vizsgálat indítása"
+python3 code_base/_main.py             # generátor -> "Vizsgálat indítása"
 python3 tests/teszt_korillesztes.py    # ellenőrzés
 ```
 
-A parancsokat a projekt gyökeréből kell kiadni (ott van a `main.py`).
+A parancsokat a projekt gyökeréből kell kiadni. VS Code-ban a `code_base/_main.py` a ▶ gombbal is indítható.
 
-## A generálás (gui.py)
+## A generálás (generator_gui.py)
 
 1. Egy névleges kör (középpont + sugár R) a kiindulás.
 2. **Lefedettség:** teljes kör vagy ívdarab (kezdő- és végszög fokban, a 0°-on át is), a szögek véletlenek vagy egyenletes közűek.
@@ -48,19 +48,19 @@ A parancsokat a projekt gyökeréből kell kiadni (ott van a `main.py`).
 
 Bármelyik mező módosításakor a ponthalmaz automatikusan újragenerálódik ugyanazzal a seeddel; az „Új véletlen halmaz” gomb új seedet sorsol. Minden hiba csak a pont sugárirányú távolságát változtatja, a szögét nem, így a pontok mindig a megadott íven belül maradnak.
 
-A **„Vizsgálat indítása”** gomb bezárja (elrejti) a generátorablakot, és megnyitja a vizsgáló ablakot, átadva neki a ponthalmazt és a generálás adatait. A vizsgáló ablak **„← Vissza a generátorhoz”** gombja bezárja a vizsgáló ablakot, és újra megjeleníti a generátort a beállított mezőkkel és ponthalmazzal, így módosítás után új vizsgálat indítható. A két ablakot a `main.py` köti össze; a vizsgáló ablak bezárásakor (X) a program kilép.
+A **„Vizsgálat indítása”** gomb bezárja (elrejti) a generátorablakot, és megnyitja a vizsgáló ablakot, átadva neki a ponthalmazt és a generálás adatait. A vizsgáló ablak **„← Vissza a generátorhoz”** gombja bezárja a vizsgáló ablakot, és újra megjeleníti a generátort a beállított mezőkkel és ponthalmazzal, így módosítás után új vizsgálat indítható. A két ablakot a `_main.py` köti össze; a vizsgáló ablak bezárásakor (X) a program kilép.
 
 ## A körillesztés (korillesztes.py)
 
 **Célfüggvény:** egy (a, b) középpontra r a pontok legkisebb, R a legnagyobb távolsága a középponttól; a minimalizálandó hiba a gyűrű szélessége, R − r.
 
-**A három keresőmódszer** (felületük: `f(points, max_iter, seed, bounds=None) -> FitResult`):
+**A három keresőmódszer** (felületük: `f(points, max_iter, seed) -> FitResult`):
 
 | Módszer | Egy iteráció | Kiértékelés / iteráció | Előadás |
 |---|---|---|---|
 | Hegymászó véletlen újraindítással | a 8 szomszéd megvizsgálása, lépés a legjobbra | 8 | Keresés II., 45. és 50. dia |
 | Szimulált hűtés | egy véletlen szomszéd kipróbálása | 1 | Keresés II., 51–53. dia |
-| Genetikus algoritmus | egy generáció (szelekció, kereszteződés, mutáció, a legrosszabbak eldobása) | 40 | Keresés II., 60–66. dia |
+| Genetikus algoritmus | egy generáció (véletlen szülők, súlyozott kereszteződés a szülőket összekötő szakaszon, mutáció, a legrosszabbak eldobása) | 40 | Keresés II., 60–66. dia |
 
 A módszerek az előadásokban megadott lépéseket követik, egyszerű ciklusokkal megírva (a lépések számozása a kódban is az előadásét követi). Mivel itt minimalizálunk, az előadás „f(s′) ≥ f(s)” feltétele „f(s′) < f(s)” lesz. A leállási feltétel az iterációk száma, mert a legkisebb szélességet előre nem ismerjük.
 
@@ -83,24 +83,23 @@ A vizsgáló ablak **„Futás grafikonjai”** gombja külön ablakban, ugyanar
 - **zöld:** az eddig talált legjobb szélesség,
 - **szürke szaggatott:** a névleges (várt) szélesség.
 
-A grafikonok címében a futás végén elért két érték látszik. Az adatokat a `korillesztes.py` módszerei adják: a nem kötelező `history` listába a kezdőállapot után és minden iteráció után beírják az (aktuális, legjobb) szélességet. Ez a keresést nem befolyásolja.
+A grafikonok címében a futás végén elért két érték látszik. Az adatokat a `korillesztes.py` módszerei adják: az eredmény `history` listájába a kezdőállapot után és minden iteráció után beírják az (aktuális, legjobb) szélességet. Ez a keresést nem befolyásolja.
 
-Önállóan, egy minta ponthalmazzal is indítható: `python3 code_base/futas_grafikon.py`.
 
 ## Használat a kódból
 
-A projekt gyökeréből futtatva:
+A `code_base` mappából futtatva (vagy ha a `code_base` mappa a Python keresési útvonalán van):
 
 ```python
-from code_base.ponthalmaz_generator import generate_points
-from code_base import korillesztes as kor
+from generator.ponthalmaz_generator import generate_points
+from kiertekelo import korillesztes as kor
 
-pontok, ground_truth = generate_points(
-    n=200, radius=100, arc=(30, 200),
-    shape="ellipse", shape_params={"ratio": 0.9},
-    noise_level=1.5, outlier_fraction=0.05, seed=42)
+pontok, generation_info = generate_points(
+    n=200, radius=100, full_circle=False, arc_start=30, arc_end=200,
+    shape="ellipszis", ellipse_ratio=0.9,
+    noise=1.5, outlier_percent=5, seed=42)
 
 for eredmeny in kor.fit_all(pontok, max_iter=200, seed=1):
-    print(eredmeny.method, eredmeny.width, eredmeny.center,
-          eredmeny.evaluations, eredmeny.time_s)
+    print(eredmeny.method_name, eredmeny.width, eredmeny.a, eredmeny.b,
+          eredmeny.evaluations, eredmeny.run_time)
 ```

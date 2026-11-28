@@ -1,1 +1,1 @@
-"""A Csebisev-körillesztés programcsomagja (indítás: python3 main.py)."""
+"""A Csebisev-körillesztés programja (indítás: python3 code_base/_main.py)."""
